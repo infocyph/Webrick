@@ -34,12 +34,32 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Kernel\PhpErrorBridge;
 use Infocyph\Webrick\Tests\Fixture\TestController;
 use Infocyph\Webrick\Tests\Fixture\TestMiddleware;
+use Symfony\Component\Process\Process;
 
 /**
  * PHPBench normally discovers subjects and setup hooks reflectively. These
  * targeted smoke cases call real entrypoints, including setup/teardown,
  * so failures cannot hide behind the framework's dynamic discovery path.
  */
+test('benchmark route discovery produces no output in a fresh worker', function (): void {
+    $worker = new Process([
+        PHP_BINARY,
+        '-r',
+        <<<'PHP'
+require 'vendor/autoload.php';
+foreach (['fused', 'generated', 'sharded'] as $mode) {
+    Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport::matcher('index', $mode)
+        ->match('GET', 'localhost', '/ping');
+}
+PHP,
+    ], cwd: dirname(__DIR__, 2), timeout: 15);
+    $worker->run();
+
+    expect($worker->isSuccessful())->toBeTrue($worker->getErrorOutput())
+        ->and($worker->getOutput())->toBe('')
+        ->and($worker->getErrorOutput())->toBe('');
+});
+
 test('setup-managed benchmarks execute representative real methods', function (): void {
     $cache = new CacheLifecycleBench();
     $cache->setUp();

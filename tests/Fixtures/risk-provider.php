@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// Route discovery also includes fixtures. Only the explicitly selected HTTP
+// router entrypoint may emit a provider response.
+if (PHP_SAPI !== 'cli-server' || (get_included_files()[0] ?? null) !== __FILE__) {
+    return;
+}
+
 // Local transport fault fixture; never a production CAPTCHA verifier.
 /** @throws RuntimeException */
 function providerFixturePath(mixed $uri): string
