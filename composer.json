@@ -41,6 +41,7 @@
     "suggest": {
         "ext-intl": "Enables optional Unicode NFKC normalization in InputSanitizer.",
         "infocyph/cachelayer": "Provides Webrick-tested CacheLayer 4 PSR-6 stores/default response-cache backing and the optional atomic-counter adapter.",
+        "infocyph/pathwise": "Optional host-owned hardened upload/download validation and storage.",
         "infocyph/runwire": "Enables the optional Runwire 3 HTTP runtime integration; the host owns workers, event loops and graceful draining.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",

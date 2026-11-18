@@ -134,11 +134,17 @@ final class RiskAdmissionRedisReplayTest extends TestCase
             throw new UnexpectedValueException('Redis proof worker failed: ' . $worker->getErrorOutput());
         }
         $decoded = json_decode($worker->getOutput(), true, 512, JSON_THROW_ON_ERROR);
-        if (!is_array($decoded) || !is_int($decoded['status'] ?? null) || !is_int($decoded['handler_calls'] ?? null)) {
+        if (!is_array($decoded)) {
             throw new UnexpectedValueException('Redis proof worker returned malformed JSON evidence.');
         }
 
-        return ['status' => $decoded['status'], 'handler_calls' => $decoded['handler_calls']];
+        $status = $decoded['status'] ?? null;
+        $handlerCalls = $decoded['handler_calls'] ?? null;
+        if (!is_int($status) || !is_int($handlerCalls)) {
+            throw new UnexpectedValueException('Redis proof worker returned malformed JSON evidence.');
+        }
+
+        return ['status' => $status, 'handler_calls' => $handlerCalls];
     }
 
     /** @throws \Throwable */
