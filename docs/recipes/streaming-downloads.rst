@@ -6,9 +6,10 @@ runtime to serve local files efficiently. Do not rely on basename() alone to
 authorize a path: it cannot enforce a trusted root, symlink policy or tenant
 ownership.
 
-For host-selected **public** local assets, optional Pathwise 4
-PublicFileResolver can check canonical root containment before Webrick handles
-the request's HTTP range semantics:
+For host-selected **public** local assets, Pathwise 4
+PublicFileResolver checks canonical root containment before Webrick handles
+the request's HTTP range semantics. Use Pathwise as the storage/policy
+library; keep Webrick's native local-file HTTP fast path:
 
 .. code-block:: php
 
@@ -40,8 +41,7 @@ The host registers the handler and chooses which files are eligible for
 public access. The resolver rejects symlinks by default and must never be used
 as a substitute for per-user authorization of private files.
 
-For protected documents or remote Flysystem storage, consult the File upload
-and protected download recipe. Use Pathwise DownloadProcessor for allowed
-storage roots and prepared streaming, and Webrick Response::stream for the
-HTTP response. Do not parse the range twice or transform request paths into
+For application-managed protected documents or remote Flysystem storage,
+use Pathwise DownloadProcessor for allowed storage roots, range and policy,
+and Webrick Response::stream for the HTTP transport. See :doc:`file-upload`. Do not parse the range twice or transform request paths into
 raw filesystem paths. Verify HEAD, conditional requests and disconnects.

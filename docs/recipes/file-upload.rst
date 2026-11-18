@@ -1,14 +1,20 @@
 File upload and protected download with Pathwise
 ================================================
 
-Webrick owns HTTP routing, request parsing and responses; the host owns
-authentication, storage, authorizations, malware scanning, persistence and
-quotas. Use optional Pathwise 4 for hardened upload/download storage workflows,
-without introducing a mandatory dependency into Webrick:
+For **all application-managed uploads and downloads**, use Pathwise 4 as the
+storage/policy engine. Webrick deliberately retains only HTTP primitives:
+multipart-to-UploadedFile normalization, the moveTo transport callback,
+HTTP response/status/header construction, and native FileBody/range delivery
+for preauthorized local assets. Those primitives are not storage workflows.
+
+The recommended integration is tested by the Webrick integration suite using
+Pathwise 4.2.1+. The dependency is **host-installed**, not a mandatory
+router/runtime package; Webrick's development dependency runs the real
+cross-library tests without burdening router-only installations.
 
 .. code-block:: bash
 
-   composer require infocyph/pathwise:^4.0
+   composer require infocyph/pathwise:^4.2.1
 
 Create the private directory outside the web root and grant it safe ownership
 and permissions at deployment time. Set up instance-scoped storage rather than
@@ -129,10 +135,18 @@ streaming. Webrick builds the HTTP response and owns HEAD and cancellation.
 Response::stream removes Content-Length, retaining the status and range headers
 for partial streams. Do not manually parse byte ranges or materialize large
 files in memory. The host still owns conditional request validation and
-cancellation policy. For prevalidated canonical local paths, prefer Webrick's
-native Response::rangedFile/Response::rangedAttachment fast paths.
+cancellation policy. For host-authorized canonical **local** paths, keep the native Webrick
+Response::rangedFile()/Response::rangedAttachment() HTTP fast paths.
+Pathwise PublicFileResolver establishes root containment before public
+file responses; Pathwise DownloadProcessor owns private storage and range
+policy. Neither Pathwise nor Webrick authorizes callers automatically.
 
 Test size, MIME/signature mismatch, scanner failure, symlink/root escape,
 concurrent uploads, failed metadata persistence, cross-tenant access, invalid
 ranges, HEAD, missing files and early disconnects. Remote Flysystem adapters
 must be qualified for their actual atomicity and consistency guarantees.
+
+For the cross-library regression coverage, see
+``tests/Integration/PathwiseStorageBoundaryTest.php``. Webrick does not
+ship a second upload processor, malware scanner, storage abstraction, or
+file-policy configuration facade.

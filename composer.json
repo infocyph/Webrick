@@ -32,6 +32,7 @@
     },
     "require-dev": {
         "infocyph/cachelayer": "^4.0.2",
+        "infocyph/pathwise": "^4.2.1",
         "infocyph/phpforge": "dev-main@dev",
         "infocyph/runwire": "^3.0.1",
         "opis/closure": "^4.5",
@@ -41,7 +42,7 @@
     "suggest": {
         "ext-intl": "Enables optional Unicode NFKC normalization in InputSanitizer.",
         "infocyph/cachelayer": "Provides Webrick-tested CacheLayer 4 PSR-6 stores/default response-cache backing and the optional atomic-counter adapter.",
-        "infocyph/pathwise": "Optional host-owned hardened upload/download validation and storage.",
+        "infocyph/pathwise": "Recommended application-level upload/download storage, validation and policy via Pathwise 4; Webrick owns the HTTP boundary.",
         "infocyph/runwire": "Enables the optional Runwire 3 HTTP runtime integration; the host owns workers, event loops and graceful draining.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
