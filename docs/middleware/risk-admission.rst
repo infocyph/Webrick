@@ -168,3 +168,22 @@ performance (at most 2% RPM, 15% p99, 32 MiB RSS regression) and the
 required 30-minute persistent-worker soak. The maintained acceptance
 ledger stays open until exact-revision evidence exists. A green
 generic Security & Standards workflow alone does not cover these checks.
+
+Host-provider boundary fixture
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The optional integration test
+``tests/Integration/RiskAdmissionHostProofBoundaryTest.php`` models a host
+which has already parsed bounded input and injects a provider verification
+callback. It confirms expected hostname/action, uses a shared proof digest
+namespace rather than per-tenant/per-account replay keys, claims proofs
+through isolated Redis ``SET NX EX``, and rejects malformed replies,
+known provider transport outages, repeated proofs and hard-denied attempts.
+A wrong-password attempt still spends its proof. Neither provider tokens
+nor Redis key material are part of Webrick's default HTTP response.
+
+The verifier response is a **test fixture**, not a live Turnstile Siteverify
+integration. This test does not validate TLS, server-side Siteverify requests,
+provider retry/cancellation, cluster failover, eviction durability, trust
+cookies, user authentication, or production secrets. The host must validate
+these separately before enabling enforcement in production.
