@@ -68,7 +68,7 @@ normalization remain owned by the kernel. Do not expose reasons, scores,
 credential content, provider responses or exception details to clients.
 
 Stateless REST proof flow (host responsibility)
-----------------------------------------------
+-----------------------------------------------
 
 1. The host enforces body/request limits and validates credentials and proof
    fields once before expensive password verification. A challenged request
@@ -123,7 +123,7 @@ worker-global callback. Ordinary SAPI requires no Runwire runtime; a host
 choosing Runwire must pass its existing cancellation/deadline context.
 
 Real isolated shared-backend acceptance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The repository's PHPForge QA matrix starts a dedicated Redis standalone
 service for its integration tests (including the PHP Redis extension).

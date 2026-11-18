@@ -76,12 +76,17 @@
             "/.agents",
             "/.aws",
             "/.codex",
+            "/.github",
             "/.route-cache",
             "/.route-cache-*",
             "/.runtime-certification",
+            "/benchmark",
+            "/benchmarks",
             "/composer.lock",
+            "/docs/plans",
             "/graphify-out",
             "/phpforge",
+            "/tests",
             "/vendor"
         ]
     },

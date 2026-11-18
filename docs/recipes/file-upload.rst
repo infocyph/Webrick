@@ -1,5 +1,5 @@
 File upload and protected download with Pathwise
-==============================================
+================================================
 
 Webrick owns HTTP routing, request parsing and responses; the host owns
 authentication, storage, authorizations, malware scanning, persistence and
