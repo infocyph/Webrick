@@ -8,6 +8,10 @@ DURATION_SECONDS="${4:-5}"
 TRIALS="${5:-3}"
 PARITY_DURATION_SECONDS="${6:-$DURATION_SECONDS}"
 MODE="${7:-all}"
+CONCURRENCY="${8:-all}"
+
+source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
+SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
 
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
     echo "Certification mode must be all, sapi or runwire." >&2
@@ -158,7 +162,6 @@ rss_kb() {
 source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-worker-events.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-metrics.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
 
 wait_ready() {
     local url="$1"
@@ -449,7 +452,7 @@ run_trial() {
     assert_rejection_probes "$mode" "$port"
     wrk -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 
-    for concurrency in 1 5 20 50; do
+    for concurrency in $SELECTED_CONCURRENCIES; do
         record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
         record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
         record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"

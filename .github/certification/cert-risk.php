@@ -119,6 +119,24 @@ function certification_risk_evaluate(Request $request, string $workload): string
 }
 
 /**
+ * One immutable policy binding per workload and worker; no request or verdict is cached.
+ * @throws InvalidArgumentException
+ */
+function certification_risk_middleware(string $workload): RiskAdmissionMiddleware
+{
+    static $bindings = [];
+
+    return $bindings[$workload] ??= new RiskAdmissionMiddleware(
+        static fn(Request $current): RiskDecision => match (certification_risk_evaluate($current, $workload)) {
+            'allow' => RiskDecision::allow(),
+            'challenge' => RiskDecision::challenge(),
+            'deny' => RiskDecision::deny(),
+            default => RiskDecision::unavailable(),
+        },
+    );
+}
+
+/**
  * Ordinary baseline middleware and candidate integration share this exact evaluator.
  * @param callable(Request):Response $next
  * @throws Throwable
@@ -130,14 +148,7 @@ function certification_risk_admit(Request $request, callable $next, string $work
         $request = $request->withAttribute('cert.parsed_login', $body);
     }
     if (certification_risk_mode() === 'middleware') {
-        $admission = new RiskAdmissionMiddleware(
-            static fn(Request $current): RiskDecision => match (certification_risk_evaluate($current, $workload)) {
-                'allow' => RiskDecision::allow(),
-                'challenge' => RiskDecision::challenge(),
-                'deny' => RiskDecision::deny(),
-                default => RiskDecision::unavailable(),
-            },
-        );
+        $admission = certification_risk_middleware($workload);
 
         return $admission($request, $next);
     }

@@ -69,3 +69,16 @@ for workload, concurrency in profiles:
 for invalid in ['0', '-1', 'invalid', '2+2']:
     if configured_threads(invalid).returncode == 0:
         raise RuntimeError('Accepted unsupported concurrency: ' + invalid)
+
+for selection, expected in [('all', '1\n5\n20\n50'), ('1', '1'), ('5', '5'), ('20', '20'), ('50', '50')]:
+    result = subprocess.run(['bash', '-c', 'source "$1"; load_concurrencies "$2"',
+                             'shard-test', str(helper.resolve()), selection],
+                            capture_output=True, text=True, check=True)
+    if result.stdout.strip() != expected:
+        raise RuntimeError('Incorrect concurrency shard selection: ' + selection)
+for invalid in ['0', '-1', '1 5', 'invalid']:
+    result = subprocess.run(['bash', '-c', 'source "$1"; load_concurrencies "$2"',
+                             'shard-test', str(helper.resolve()), invalid],
+                            capture_output=True, text=True, check=False)
+    if result.returncode == 0:
+        raise RuntimeError('Accepted unsupported concurrency shard: ' + invalid)

@@ -47,6 +47,9 @@ counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,
 and bounded synthetic provider latency. Baseline uses ordinary host middleware;
 candidate uses ``RiskAdmissionMiddleware`` with the same host policy and account
 lookup. Wrong-password responses are measured separately from successful logins.
+Each worker reuses an immutable middleware binding per protected workload;
+requests and decisions are still evaluated afresh and never retained by that
+binding. Middleware construction is preparation work, not per-request load.
 
 Supply an isolated, unauthenticated loopback Redis service through
 ``IC_REDIS_HOST=127.0.0.1`` and ``IC_REDIS_PORT``. The hosted jobs provision their
@@ -58,6 +61,14 @@ fixtures, not production issuance or live CAPTCHA verification.
 The normal gate retains three warmed 10-second trials at concurrency 1, 5, 20
 and 50, with 384 required rows and 64 comparisons per runtime mode. Budgets remain
 2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
+The hosted matrix runs each concurrency on its own runner and Redis service,
+with baseline and candidate paired on that runner. All four concurrency artifacts
+must have matching commit, runtime and dependency provenance before aggregation.
+The unchanged full-matrix analyzer rejects missing or duplicate rows and enforces
+every budget. This preserves the 64 minutes of total load per mode while reducing
+the load critical path to 16 minutes plus setup. The separate 30-minute soak runs
+in parallel and remains the floor for complete certification; runner queues and
+setup add elapsed time.
 Load threads divide the requested connection count exactly: 1, 1, 4 and 2 threads
 respectively. Bcrypt/login and delayed-provider workloads use one client event
 loop with the full connection count. This avoids low-rate client-thread latency

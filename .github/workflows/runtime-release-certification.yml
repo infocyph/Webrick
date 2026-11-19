@@ -168,7 +168,7 @@ jobs:
           include-hidden-files: true
 
   same-run-performance:
-    name: Webrick baseline vs candidate HTTP performance (${{ matrix.mode }})
+    name: HTTP performance (${{ matrix.mode }}, c${{ matrix.concurrency }})
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
@@ -183,16 +183,16 @@ jobs:
           --health-retries 10
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
         mode: [sapi, runwire]
+        concurrency: [1, 5, 20, 50]
     env:
       CERT_MODE: ${{ matrix.mode }}
+      CERT_CONCURRENCY: ${{ matrix.concurrency }}
       IC_REDIS_HOST: 127.0.0.1
       CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}
       CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
-      CERT_THROUGHPUT_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}
-      CERT_P99_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}
-      CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
     steps:
       - name: Check out candidate
         uses: actions/checkout@v7
@@ -232,6 +232,7 @@ jobs:
             printf 'candidate_sha=%s\n' "$(git -C candidate rev-parse HEAD)"
             printf 'php_version=%s\n' "$(php -r 'echo PHP_VERSION;')"
             printf 'benchmark_mode=%s\n' "$CERT_MODE"
+            printf 'benchmark_concurrency=%s\n' "$CERT_CONCURRENCY"
           } | tee cert-results/environment.txt
           for package in infocyph/runwire infocyph/intermix; do
             baseline_version="$(composer --working-dir=baseline show --format=json "$package" | jq -er '.versions[0]')"
@@ -250,6 +251,7 @@ jobs:
           bash candidate/.github/certification/test-load-worker-events.sh
           bash candidate/.github/certification/test-load-metrics.sh
           python3 candidate/.github/certification/test-load-concurrency.py
+          python3 candidate/.github/certification/test-merge-load-shards.py
 
       - name: Prepare explicitly corrected performance reference
         run: |
@@ -298,11 +300,56 @@ jobs:
         run: |
           bash candidate/.github/certification/load-benchmark.sh \
             "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
-            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE"
+            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE" "$CERT_CONCURRENCY"
 
-      - name: Enforce performance budgets
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: webrick-http-${{ matrix.mode }}-c${{ matrix.concurrency }}
+          path: cert-results/
+          if-no-files-found: error
+
+  performance-budgets:
+    name: Complete HTTP performance budgets (${{ matrix.mode }})
+    needs: same-run-performance
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sapi, runwire]
+    env:
+      CERT_MODE: ${{ matrix.mode }}
+      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}
+      CERT_THROUGHPUT_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}
+      CERT_P99_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}
+      CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
+      CERT_CANDIDATE_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out analyzer
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+
+      - name: Download all concurrency evidence
+        uses: actions/download-artifact@v8
+        with:
+          pattern: webrick-http-${{ matrix.mode }}-c*
+          path: shards
+
+      - name: Merge matching shards and enforce complete-matrix budgets
         run: |
-          php candidate/.github/certification/analyze-load.php \
+          python3 .github/certification/merge-load-shards.py shards cert-results "$CERT_MODE" "$CERT_CANDIDATE_SHA"
+          php .github/certification/analyze-load.php \
             --input="$PWD/cert-results/load-results.jsonl" \
             --summary="$PWD/cert-results/summary.md" \
             --json="$PWD/cert-results/comparison.json" \
@@ -310,9 +357,15 @@ jobs:
             --throughput-regression-percent="$CERT_THROUGHPUT_PERCENT" \
             --p99-regression-percent="$CERT_P99_PERCENT" \
             --memory-regression-mb="$CERT_MEMORY_MB"
-          cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload performance evidence
+      - name: Publish performance summary
+        if: always()
+        run: |
+          if [[ -f cert-results/summary.md ]]; then
+            cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload complete performance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 
 # wrk truncates connections/threads; every supported concurrency must divide exactly.
+load_concurrencies() {
+    case "${1:-all}" in
+        all) printf '%s\n' 1 5 20 50 ;;
+        1|5|20|50) printf '%s\n' "$1" ;;
+        *) echo "Unsupported certification concurrency: $1" >&2; return 1 ;;
+    esac
+}
+
 load_threads() {
     local threads
     case "$1" in
