@@ -157,6 +157,7 @@ rss_kb() {
 
 source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-worker-events.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-metrics.sh"
 
 wait_ready() {
     local url="$1"
@@ -267,63 +268,6 @@ wrk_p99_ms() {
     latency_ms "${raw:-0ms}"
 }
 
-validate_metrics_json() {
-    jq -e '
-        type == "object"
-        and (.pid | type == "number")
-        and (.memory_current_bytes | type == "number")
-        and (.memory_peak_bytes | type == "number")
-        and (.requests_active | type == "number")
-        and (
-            ((.queued_bytes_current? // null) | type == "number")
-            or ((.deferred_backlog? // null) | type == "number")
-        )
-        and (.rejected_requests_total | type == "number")
-    ' >/dev/null
-}
-
-fetch_metrics() {
-    local port="$1"
-    local timeout="${2:-2}"
-    local metrics
-    if ! metrics="$(curl -fsS --max-time "$timeout" "http://127.0.0.1:${port}/__cert/metrics")"; then
-        echo "Unable to fetch required certification telemetry from port ${port}." >&2
-        return 1
-    fi
-    if ! validate_metrics_json <<<"$metrics"; then
-        echo "Certification telemetry from port ${port} is missing required fields." >&2
-        echo "$metrics" >&2
-        return 1
-    fi
-
-    printf '%s' "$metrics"
-}
-
-fetch_drained_metrics() {
-    local port="$1"
-    local evidence="$2"
-    local deadline=$((SECONDS + 2))
-    local remaining metrics
-    : > "$evidence"
-    while (( SECONDS < deadline )); do
-        remaining=$((deadline - SECONDS))
-        metrics="$(fetch_metrics "$port" "$remaining")" || return 1
-        printf '%s\n' "$metrics" >> "$evidence"
-        if jq -e '
-            (.queued_bytes_current // 0) == 0
-            and (.deferred_backlog // 0) == 0
-            and .requests_active <= 1
-            and .rejected_requests_total == 0
-        ' <<<"$metrics" >/dev/null; then
-            printf '%s' "$metrics"
-            return 0
-        fi
-        sleep 0.05
-    done
-    echo "Certification requests or queues did not drain within two seconds on port $port." >&2
-    return 1
-}
-
 assert_correctness() {
     local port="$1"
     local base="http://127.0.0.1:${port}"
@@ -427,11 +371,8 @@ record_wrk() {
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
     local threads="$concurrency"
     local close_delimited=0
-    local request_timeout=2s
-    if [[ "$workload" == risk_login* || "$workload" == risk_provider_slow ]]; then
-        # Real bcrypt work can queue behind 50 clients on a single SAPI worker.
-        request_timeout=10s
-    fi
+    local request_timeout
+    request_timeout="$(load_request_timeout "$workload")"
     if (( threads > 4 )); then
         threads=4
     fi
@@ -442,7 +383,7 @@ record_wrk() {
     local rss_samples="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-rss.txt"
     CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
         run_load_with_rss "$pid" "$rss_samples" "$out" \
-        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "$request_timeout" \
+        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "${request_timeout}s" \
         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}"
 
     local rps complete non2xx p99 rss metrics validated invalid
@@ -459,7 +400,10 @@ record_wrk() {
     timeout_errors="$(wrk_socket_error "$out" timeout)"
     failed=$((connect_errors + read_errors + write_errors + timeout_errors))
     rss="$(awk 'max < $1 { max = $1 } END { print max + 0 }' "$rss_samples")"
-    metrics="$(fetch_drained_metrics "$port" "$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-settling.jsonl")"
+    if [[ "$mode" == runwire ]]; then
+        assert_load_worker_events "$CURRENT_EVENT_SOURCE"
+    fi
+    metrics="$(fetch_drained_metrics "$port" "$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-settling.jsonl" "$request_timeout")"
 
     jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson validated "${validated:-0}"         --argjson invalid "${invalid:-0}"         --argjson failed "$failed"         --argjson non2xx "${non2xx:-0}"         --argjson connect_errors "$connect_errors"         --argjson read_errors "$read_errors"         --argjson write_errors "$write_errors"         --argjson timeout_errors "$timeout_errors"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
             version:$version,

@@ -243,10 +243,23 @@ jobs:
             fi
           done
 
-      - name: Verify in-load RSS sampling and failure propagation
+      - name: Verify reference preparation and collector failure propagation
         run: |
+          bash candidate/.github/certification/test-prepare-baseline.sh
           bash candidate/.github/certification/test-load-rss-sampler.sh
           bash candidate/.github/certification/test-load-worker-events.sh
+          bash candidate/.github/certification/test-load-metrics.sh
+
+      - name: Prepare explicitly corrected performance reference
+        run: |
+          bash candidate/.github/certification/prepare-baseline.sh "$PWD/baseline" "$PWD/cert-results"
+
+      - name: Verify cancellation regressions against the corrected reference
+        working-directory: baseline
+        run: |
+          vendor/bin/pest --configuration=vendor/infocyph/phpforge/resources/pest.xml \
+            --bootstrap=vendor/autoload.php \
+            ../candidate/tests/Unit/RunwireRuntimeApplicationTest.php --fail-on-skipped --compact
 
       - name: Prove analyzer rejects incomplete evidence
         run: |

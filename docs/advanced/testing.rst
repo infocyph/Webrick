@@ -63,16 +63,31 @@ measured; ordinary workloads retain their existing deadline. Every complete
 response must validate. Missing evidence, transport errors and unexpected worker
 exits, unhealthy events or restarts fail the gate; worker events are retained on
 early collector failure too.
-Post-load telemetry must show drained queues and requests within two seconds;
-all settling samples are retained. This wait does not alter measured latency,
-throughput, transport errors or in-load RSS peaks.
+Post-load telemetry must show drained queues and requests within the workload's
+existing client deadline: two seconds for ordinary workloads, ten seconds for
+bcrypt workloads. The control probe queues behind legitimate in-flight work on
+a single SAPI worker; it must share that deadline. All settling samples are
+retained. This wait does not alter measured latency, throughput, transport
+errors or in-load RSS peaks. Invalid telemetry, persistent leaked state and
+worker restarts still fail certification.
 
 The 30-minute persistent-worker soak also exercises shared counters, clearance
 consumption and real password verification alongside the ordinary routes,
 deliberate cancellation and planned recycling. Short collector/soak smoke runs
-validate the harness and cannot replace release qualification. A baseline that
-fails correctness must be corrected through the trusted baseline workflow rather
-than silently patched in the comparison.
+validate the harness and cannot replace release qualification.
+
+The performance reference is trusted ``main`` plus the reviewed cancellation-only
+backport in ``baseline-cancellation.diff``. The old adapter lets asynchronous
+transport cancellation escape and kills workers; it cannot provide a valid
+performance control. ``prepare-baseline.sh`` verifies pinned source and patch
+hashes, rejects unrelated tracked edits and unknown source, and preserves Git
+HEAD. The reference runs the candidate's cancellation regression tests before
+load. Both original and measured source, hashes and normalization state are
+published with the results and identified in the workflow summary. This measures
+against corrected main; it does not certify unpatched main. Once main contains a
+recognized correction, no patch is applied. Any other adapter revision requires
+review and renewed pins. Dependency equivalence and every existing correctness,
+worker-lifecycle and performance gate remain mandatory.
 
 The local provider HTTP tests exercise configurable endpoints, strict reply
 binding, bounded bodies, 4xx/5xx responses, redirects and timeouts without a retry.

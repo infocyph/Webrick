@@ -6,7 +6,9 @@ assert_load_worker_events() {
         echo "Required load worker lifecycle evidence is missing or empty: $events" >&2
         return 1
     fi
-    if ! jq -s -e '
+    # The PHP event writer appends under LOCK_EX; share that lock so a live
+    # health check cannot mistake a partially written record for a failure.
+    if ! flock --shared --timeout 2 "$events" jq -s -e '
         any(.[]; .type == "worker_ready")
         and all(.[];
             .type != "worker_unhealthy"
