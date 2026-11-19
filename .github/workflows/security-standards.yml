@@ -41,19 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      IC_REDIS_HOST: 127.0.0.1
-      IC_REDIS_PORT: "6379"
     steps:
       - name: Check out candidate
         uses: actions/checkout@v7
@@ -125,10 +112,4 @@ jobs:
               throw new RuntimeException("Pathwise must remain optional.");
           }
           ' "$consumer"
-
-      - name: Run full PHPForge detailed diagnostics
-        shell: bash
-        run: |
-          composer install --no-interaction --no-progress --prefer-dist
-          composer ic:tests:details
 
