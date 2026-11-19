@@ -524,8 +524,10 @@ jobs:
       - name: Restore candidate dependencies and lock
         run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
-      - name: Verify bounded HTTP batch ownership
-        run: bash .github/certification/test-soak-http-batch.sh
+      - name: Verify soak collector failure propagation
+        run: |
+          bash .github/certification/test-soak-http-batch.sh
+          bash .github/certification/test-soak-metrics.sh
 
       - name: Run persistent-worker soak
         env:

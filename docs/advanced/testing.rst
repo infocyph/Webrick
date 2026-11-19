@@ -93,6 +93,10 @@ The 30-minute persistent-worker soak also exercises shared counters, clearance
 consumption and real password verification alongside the ordinary routes,
 deliberate cancellation and planned recycling. Short collector/soak smoke runs
 validate the harness and cannot replace release qualification.
+Final drain checks prime and refresh diagnostics on both live workers before
+checking their queues within the ordinary two-second control deadline. Runwire's
+queue gauge is sampled after request completion; idle time alone does not refresh
+it. All settling observations and lifecycle events are retained on failure too.
 
 The performance reference is trusted ``main`` plus the reviewed cancellation-only
 backport in ``baseline-cancellation.diff``. The old adapter lets asynchronous

@@ -67,6 +67,7 @@ wait_ready() {
 }
 
 source "$(dirname "${BASH_SOURCE[0]}")/soak-http-batch.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/soak-metrics.sh"
 
 fetch_retry() {
     local url="$1"
@@ -101,6 +102,9 @@ SERVER_PID=$!
 cleanup() {
     kill -TERM "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+    if [[ -f "$SUPERVISOR_EVENTS_SOURCE" ]]; then
+        cp "$SUPERVISOR_EVENTS_SOURCE" "$SUPERVISOR_EVENTS"
+    fi
 }
 trap cleanup EXIT
 
@@ -143,13 +147,14 @@ done
 
 sleep 1
 sample $((CYCLE + 1))
+DRAINED_WORKERS="$(fetch_drained_soak_workers 18100 "$SUPERVISOR_EVENTS_SOURCE" "$RESULT_DIR/soak-settling.jsonl")"
 
 FIRST_MEMORY="$(jq -s '.[0].runtime.memory_current_bytes // 0' "$METRICS")"
 LAST_MEMORY="$(jq -s '.[-1].runtime.memory_current_bytes // 0' "$METRICS")"
 FIRST_RSS="$(jq -s '.[0].rss_kb // 0' "$METRICS")"
 LAST_RSS="$(jq -s '.[-1].rss_kb // 0' "$METRICS")"
-FINAL_ACTIVE="$(jq -s '.[-1].runtime.requests_active // 0' "$METRICS")"
-FINAL_QUEUE="$(jq -s '.[-1].runtime.queued_bytes_current // 0' "$METRICS")"
+FINAL_ACTIVE="$(jq '[.[].requests_active] | max' <<<"$DRAINED_WORKERS")"
+FINAL_QUEUE="$(jq '[.[].queued_bytes_current] | max' <<<"$DRAINED_WORKERS")"
 REJECTED="$(jq -s '[.[].runtime.rejected_requests_total // 0] | max // 0' "$METRICS")"
 DISTINCT_PIDS="$(sort -u "$PIDS" | sed '/^$/d' | wc -l | tr -d ' ')"
 
