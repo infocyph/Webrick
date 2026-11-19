@@ -147,12 +147,20 @@ Verification and release limitations
 
 Unit and registrar tests establish local middleware decisions, route
 selection, shadow forwarding and handler bypass. They do **not** prove
-provider security or cross-process atomicity. The contract's
-``A14–A26`` tests require a real isolated shared backend and adversarial
-provider/client fixtures: concurrent redemption, outage, restart/eviction,
-expiry, malformed proof/response, cancellations, account binding and
-host-configured paths/URLs. Do not count in-process doubles as distributed
-evidence.
+provider security or cross-process atomicity. Shared-backend guarantees require
+real isolated services and independent processes; the repository qualifies its
+documented standalone Redis proof-claim boundary that way.
+
+Before enabling an application's policy, qualify trusted proxy and fingerprint
+inputs, bounded payloads and counter namespaces, expiry and key rotation,
+account/tenant binding, optional trust-cookie revocation, authentication capacity,
+provider timeouts/cancellation and the deployed backend's restart, eviction and
+claimed failover behavior. Capture wall time once per proof verification and keep
+an expired permit from authorizing work that is still running. Validate the
+host-selected paths, provider endpoint and CORS configuration. Applications own
+these scoring, authentication and provider contracts; middleware registration
+alone does not qualify them. In-process doubles do not establish distributed
+correctness.
 
 Production builds can serialize *pure* closure middleware fixtures into
 executable router artifacts, but never use that capability to embed
@@ -161,13 +169,13 @@ Resolve real policy services through the host's InterMix runtime and keep
 deployments and source-free consumers qualified separately. The compiled
 parity regression exercises the pure-fixture case only.
 
-Before claiming release readiness also verify compiled/source-free and
+Library release qualification also verifies compiled/source-free and
 no-dev consumers, optional-provider absence, strict Sphinx HTML docs,
-archive contents, full PHPForge detail checks, matched authorized-request
+archive contents, PHPForge quality/security checks, matched authorized-request
 performance (at most 2% RPM, 15% p99, 32 MiB RSS regression) and the
-required 30-minute persistent-worker soak. The maintained acceptance
-ledger stays open until exact-revision evidence exists. A green
-generic Security & Standards workflow alone does not cover these checks.
+required 30-minute persistent-worker soak. Use exact-revision results from both
+Security & Standards and Runtime Release Certification when reviewing a release;
+the shared quality workflow alone does not cover every runtime boundary.
 
 Host-provider boundary fixture
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -35,6 +35,8 @@ runtime from an environment string.
 - Signed/temporary URLs, range requests, conditional responses and cache policy handling.
 - Negotiation, compression, response cache, throttling, telemetry, request limits,
   CORS/security policies and optional cookie encryption.
+- Optional [risk admission](docs/middleware/risk-admission.rst) with host-supplied
+  allow/challenge/deny/unavailable decisions, route opt-in and explicit shadow mode.
 - Optional PSR-7 and CacheLayer interoperability without making either part of the hot core.
 
 ## Requirements
@@ -179,8 +181,11 @@ $response = $kernel->handle();
 
 `ReleaseManifestLoader` prefers the generated PHP runtime manifest and falls back
 to JSON when the PHP manifest is not present. The InterMix `digest`, Webrick
-`digest`, and Webrick artifact `fingerprint` are xxh128 deployment identities;
-there is no SHA-256 release-metadata compatibility path in Webrick 6.0.
+`digest`, and Webrick artifact `fingerprint` are xxh128 deployment identities.
+Current coordinated manifests also include SHA-256 source identities, which
+`ReleaseArtifactLoader` verifies before executing artifact PHP. Compatible older
+metadata falls back to its xxh128 identities. Deployment metadata and executable
+artifacts must remain under trusted, immutable host ownership.
 
 For standalone compiled SAPI applications, prefer `handle()` without eagerly
 constructing `Request::fromGlobals()`. `CompiledRouterKernel` promotes globals to

@@ -291,9 +291,10 @@
                         "directive": "@psalm-suppress",
                         "issue": "MissingClassConstType",
                         "paths": [
-                            "src/Response/Emitter/BaseEmitter.php"
+                            "src/Response/Emitter/BaseEmitter.php",
+                            "src/Request/Request.php"
                         ],
-                        "reason": "Native types on the two overridable protected constants reject valid 6.0.4 subclasses with untyped overrides. Keep the compatibility regression and remove only at an explicitly breaking release or when Psalm supports this extension contract."
+                        "reason": "Native types on BaseEmitter's two protected constants and Request's five public proxy flags reject valid 6.0.4 subclasses with untyped overrides. Keep both compatibility regressions and remove only at an explicitly breaking release or when Psalm supports this extension contract."
                     }
                 ]
             }

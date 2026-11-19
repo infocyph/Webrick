@@ -27,15 +27,20 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
 {
     use MacroMix;
 
-    public const int HEADER_FORWARDED = 0b10000;
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
+    public const HEADER_FORWARDED = 0b10000;
 
-    public const int HEADER_X_FORWARDED_FOR = 0b00001;
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
+    public const HEADER_X_FORWARDED_FOR = 0b00001;
 
-    public const int HEADER_X_FORWARDED_HOST = 0b00010;
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
+    public const HEADER_X_FORWARDED_HOST = 0b00010;
 
-    public const int HEADER_X_FORWARDED_PORT = 0b01000;
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
+    public const HEADER_X_FORWARDED_PORT = 0b01000;
 
-    public const int HEADER_X_FORWARDED_PROTO = 0b00100;
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
+    public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
 

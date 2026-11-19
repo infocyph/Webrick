@@ -32,11 +32,12 @@ the exceptions when upstream analysis recognizes those effects. The upload
 getter uses an explicit declaring scope to avoid inherited magic-property taint
 being confused with private upload storage; actual input taints remain tracked.
 
-Two constant-local ``MissingClassConstType`` exceptions keep ``BaseEmitter``
-compatible with existing untyped protected constant overrides. PHP rejects those
-subclasses if the parent gains native constant types. The legacy emitter test
-checks this extension contract; remove the exceptions when the analyzer supports
-it, or reconsider native types only in an explicitly breaking release.
+The constant-local ``MissingClassConstType`` compatibility policy covers
+``BaseEmitter``'s two protected constants and ``Request``'s five public proxy
+flags. PHP rejects previously valid untyped subclass overrides if the parent gains
+native constant types. The legacy emitter and request-extension regressions check
+this contract. Remove the exceptions when the analyzer supports it, or reconsider
+native types only in an explicitly breaking release.
 
 Runtime release certification
 -----------------------------
