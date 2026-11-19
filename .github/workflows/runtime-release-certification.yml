@@ -57,6 +57,7 @@ defaults:
 jobs:
   live-runwire-h1-h2:
     name: Live Runwire H1/H2
+    needs: performance-dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -75,9 +76,24 @@ jobs:
 
       - name: Install certification tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq nghttp2-client openssl
-          composer install --no-interaction --no-progress --prefer-dist
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y curl jq nghttp2-client openssl; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
       - name: Build certification artifacts
         run: php .github/certification/cert-server.php prepare --root="$PWD"
@@ -454,6 +470,7 @@ jobs:
 
   persistent-worker-soak:
     name: Persistent Runwire worker soak
+    needs: performance-dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     services:
@@ -488,9 +505,24 @@ jobs:
 
       - name: Install soak dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq wrk
-          composer install --no-interaction --no-progress --prefer-dist
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y curl jq wrk; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
       - name: Verify bounded HTTP batch ownership
         run: bash .github/certification/test-soak-http-batch.sh
@@ -514,6 +546,7 @@ jobs:
 
   live-runwire-h3:
     name: Live Runwire H3
+    needs: performance-dependencies
     runs-on: ubuntu-26.04
     timeout-minutes: 35
     steps:
@@ -531,8 +564,15 @@ jobs:
           mkdir -p .runtime-certification
           php -v > .runtime-certification/php-environment.txt
           openssl version >> .runtime-certification/php-environment.txt
-          sudo apt-get update
-          sudo apt-get install -y python3-aioquic jq openssl
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y python3-aioquic jq openssl; then
+              break
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
           curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-Linux-X64
           gh attestation verify --owner php /tmp/pie
           chmod +x /tmp/pie
@@ -552,8 +592,14 @@ jobs:
           fwrite(STDOUT, PHP_VERSION . " " . OPENSSL_VERSION_TEXT . PHP_EOL);
           '
 
-      - name: Install candidate dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
       - name: Build certification artifacts and TLS identity
         run: |
