@@ -262,9 +262,18 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: ${{ needs.performance-dependencies.outputs.baseline_sha }}
+          ref: main
           path: baseline
           fetch-depth: 0
+
+      - name: Verify trusted main matches prepared dependencies
+        env:
+          PREPARED_BASELINE_SHA: ${{ needs.performance-dependencies.outputs.baseline_sha }}
+        run: |
+          if [[ "$(git -C baseline rev-parse HEAD)" != "$PREPARED_BASELINE_SHA" ]]; then
+            echo "Trusted main changed after dependency preparation; rerun with a consistent reference." >&2
+            exit 1
+          fi
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
