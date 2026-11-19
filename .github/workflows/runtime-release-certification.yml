@@ -217,8 +217,8 @@ jobs:
 
       - name: Capture the exact PHP runtime for all load shards
         run: |
-          python3 -B candidate/.github/certification/test-prepared-php.py
-          python3 candidate/.github/certification/prepared-php.py capture prepared-php
+          bash candidate/.github/certification/test-prepared-php.sh
+          bash candidate/.github/certification/prepared-php.sh capture prepared-php
 
       - name: Install the two dependency trees once
         run: |
@@ -324,7 +324,7 @@ jobs:
       - name: Restore prepared dependencies and locks
         run: |
           tar -xzf .performance-dependencies/performance-dependencies.tar.gz
-          python3 candidate/.github/certification/prepared-php.py activate "$PWD/prepared-php"
+          bash candidate/.github/certification/prepared-php.sh activate "$PWD/prepared-php"
           echo "$PWD/prepared-php/bin" >> "$GITHUB_PATH"
           echo "PHPRC=$PWD/prepared-php/php.ini" >> "$GITHUB_ENV"
           echo "PHP_INI_SCAN_DIR=$PWD/prepared-php/ini" >> "$GITHUB_ENV"
