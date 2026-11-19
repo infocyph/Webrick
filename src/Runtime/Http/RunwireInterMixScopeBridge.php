@@ -79,7 +79,7 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
             $this->requestContext,
             $this->coroutineScope,
             $invoke,
-            $request instanceof Request ? [Request::class => $request] : [],
+            $request instanceof Request && $runtime->has(Request::class) ? [Request::class => $request] : [],
         );
     }
 

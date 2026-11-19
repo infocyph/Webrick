@@ -158,6 +158,7 @@ rss_kb() {
 source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-worker-events.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-metrics.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
 
 wait_ready() {
     local url="$1"
@@ -369,13 +370,11 @@ record_wrk() {
     local duration="${9:-$DURATION_SECONDS}"
 
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
-    local threads="$concurrency"
+    local threads
+    threads="$(load_threads "$concurrency" "$workload")"
     local close_delimited=0
     local request_timeout
     request_timeout="$(load_request_timeout "$workload")"
-    if (( threads > 4 )); then
-        threads=4
-    fi
     if [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
         close_delimited=1
     fi
@@ -448,7 +447,7 @@ run_trial() {
 
     assert_correctness "$port"
     assert_rejection_probes "$mode" "$port"
-    wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+    wrk -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 
     for concurrency in 1 5 20 50; do
         record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"

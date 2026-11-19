@@ -74,6 +74,9 @@ final readonly class CompiledMiddlewarePipeline
      */
     private static function compileInvoker(RuntimeDescriptorInvoker $resolver, mixed $descriptor): array
     {
+        if ($descriptor instanceof RuntimeTaggedMiddleware) {
+            return [Closure::fromCallable($descriptor), true];
+        }
         if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
             return [
                 static function (Request $request, Closure $next) use ($resolver, $descriptor): mixed {

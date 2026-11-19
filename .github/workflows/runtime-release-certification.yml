@@ -249,6 +249,7 @@ jobs:
           bash candidate/.github/certification/test-load-rss-sampler.sh
           bash candidate/.github/certification/test-load-worker-events.sh
           bash candidate/.github/certification/test-load-metrics.sh
+          python3 candidate/.github/certification/test-load-concurrency.py
 
       - name: Prepare explicitly corrected performance reference
         run: |

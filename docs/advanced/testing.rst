@@ -58,6 +58,12 @@ fixtures, not production issuance or live CAPTCHA verification.
 The normal gate retains three warmed 10-second trials at concurrency 1, 5, 20
 and 50, with 384 required rows and 64 comparisons per runtime mode. Budgets remain
 2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
+Load threads divide the requested connection count exactly: 1, 1, 4 and 2 threads
+respectively. Bcrypt/login and delayed-provider workloads use one client event
+loop with the full connection count. This avoids low-rate client-thread latency
+cohorts without reducing application pressure, sample duration or trial count.
+A live socket regression counts actual HTTP connections; wrk's banner alone
+cannot detect rounded-down concurrency.
 Bcrypt workloads use a 10-second client deadline so queued CPU work can be
 measured; ordinary workloads retain their existing deadline. Every complete
 response must validate. Missing evidence, transport errors and unexpected worker

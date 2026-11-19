@@ -282,9 +282,7 @@ final class RuntimeDispatcher
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {
-            foreach ($this->runtime->tagged($tag) as $middleware) {
-                $explicit[] = $middleware;
-            }
+            $explicit[] = new RuntimeTaggedMiddleware($tag, $this->runtime);
         }
 
         return $explicit;

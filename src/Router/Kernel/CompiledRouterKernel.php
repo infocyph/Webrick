@@ -570,7 +570,7 @@ final readonly class CompiledRouterKernel
         return $this->runtime->withinScope(
             RuntimeRequestContext::REQUEST_SCOPE,
             $callback,
-            $request instanceof Request ? [Request::class => $request] : [],
+            $request instanceof Request && $this->runtime->has(Request::class) ? [Request::class => $request] : [],
         );
     }
 }

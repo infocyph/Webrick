@@ -73,6 +73,7 @@ jobs:
           package="$(dirname "$(find "$RUNNER_TEMP/webrick-archive-extracted" -type f -name composer.json -print -quit)")"
           test -f "$package/src/Middleware/RiskAdmissionMiddleware.php"
           test -f "$package/src/Response/Body/FileBody.php"
+          test -f "$package/src/Router/Dispatch/RuntimeTaggedMiddleware.php"
           for excluded in .github tests benchmark benchmarks docs/plans vendor; do
             if test -e "$package/$excluded"; then
               echo "Unexpected distribution content: $excluded" >&2
