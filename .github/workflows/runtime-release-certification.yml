@@ -167,8 +167,64 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
 
+  performance-dependencies:
+    name: Prepare shared performance dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      baseline_sha: ${{ steps.reference.outputs.sha }}
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: candidate
+
+      - name: Check out trusted baseline
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: main
+          path: baseline
+
+      - name: Pin prepared baseline revision
+        id: reference
+        run: echo "sha=$(git -C baseline rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+          extensions: redis
+
+      - name: Install the two dependency trees once
+        run: |
+          for checkout in candidate baseline; do
+            for attempt in 1 2 3; do
+              if composer install --working-dir="$checkout" --no-interaction --no-progress --prefer-dist; then
+                break
+              fi
+              if (( attempt == 3 )); then
+                exit 1
+              fi
+              sleep "$((attempt * 5))"
+            done
+          done
+          tar -czf performance-dependencies.tar.gz candidate/vendor candidate/composer.lock baseline/vendor baseline/composer.lock
+
+      - name: Publish current-run dependency trees
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-dependencies
+          path: performance-dependencies.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
   same-run-performance:
     name: HTTP performance (${{ matrix.mode }}, c${{ matrix.concurrency }})
+    needs: performance-dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
@@ -206,7 +262,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ needs.performance-dependencies.outputs.baseline_sha }}
           path: baseline
           fetch-depth: 0
 
@@ -217,12 +273,26 @@ jobs:
           coverage: none
           extensions: redis
 
-      - name: Install load tools and dependencies
+      - name: Install load tools with bounded mirror retries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq wrk
-          composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
-          composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y curl jq wrk; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Download the prepared dependency trees
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore prepared dependencies and locks
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz
 
       - name: Certify comparable installed runtime dependencies
         run: |
