@@ -65,6 +65,11 @@ and 50, with 384 required rows and 64 comparisons per runtime mode. Budgets rema
 The hosted matrix runs each concurrency on its own runner and Redis service,
 with baseline and candidate paired on that runner. All four concurrency artifacts
 must have matching commit, runtime and dependency provenance before aggregation.
+Dependency preparation captures the PHP executable, extension modules and INI
+configuration in the current-run artifact. Each load shard restores and verifies
+that runtime, including reruns; the installer's moving minor-version selection
+cannot change only one shard's PHP patch. Mixed patch-version evidence remains
+a hard failure.
 The unchanged full-matrix analyzer rejects missing or duplicate rows and enforces
 every budget. This preserves the 64 minutes of total load per mode while reducing
 the load critical path to 16 minutes plus setup. The separate 30-minute soak runs

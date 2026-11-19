@@ -27,7 +27,7 @@ class ShardEvidenceTest(unittest.TestCase):
             shard = self.root / f"webrick-http-runwire-c{count}"
             shard.mkdir()
             (shard / "environment.txt").write_text(
-                f"baseline_sha=base\ncandidate_sha=head\nphp_version=8.5\n"
+                f"baseline_sha=base\ncandidate_sha=head\nphp_version=8.5.12\n"
                 f"benchmark_mode=runwire\nbenchmark_concurrency={count}\n"
                 "infocyph/runwire baseline=3.0.1 candidate=3.0.1\n"
                 "infocyph/intermix baseline=11.2.1 candidate=11.2.1\n")
@@ -68,6 +68,20 @@ class ShardEvidenceTest(unittest.TestCase):
         (self.root / "webrick-http-runwire-c50").rename(self.root / "wrong-shard")
         with self.assertRaises(ValueError):
             self.merge()
+
+    def test_rerun_with_new_php_patch_is_rejected(self):
+        path = self.root / "webrick-http-runwire-c1" / "environment.txt"
+        path.write_text(path.read_text().replace("php_version=8.5.12", "php_version=8.5.13"))
+        with self.assertRaisesRegex(ValueError, "provenance differs"):
+            self.merge()
+        self.assertFalse(self.output.exists())
+
+    def test_matching_new_php_patch_passes(self):
+        for count in MERGER.CONCURRENCIES:
+            path = self.root / f"webrick-http-runwire-c{count}" / "environment.txt"
+            path.write_text(path.read_text().replace("php_version=8.5.12", "php_version=8.5.13"))
+        self.merge()
+        self.assertEqual(0, self.analyze().returncode)
 
     def test_wrong_candidate_or_baseline_rejected(self):
         path = self.root / "webrick-http-runwire-c5" / "environment.txt"
