@@ -10,7 +10,6 @@ use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\Internal\BufferedRequestBody;
 use Infocyph\Runwire\Http\Internal\CallbackResponseWriter;
-use Infocyph\Runwire\RequestContext as RunwireRequestContext;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Request;
@@ -22,7 +21,7 @@ use UnexpectedValueException;
 
 final class RunwireEarlyFormRejectionTest extends TestCase
 {
-    /** @throws \\Throwable */
+    /** @throws \Throwable */
     public function testCancelledRoutingFormReadNeverConsumesBodyOrStartsResponse(): void
     {
         $configuration = new ReflectionProperty(ServerRequest::class, 'methodParamOverride');
@@ -31,7 +30,6 @@ final class RunwireEarlyFormRejectionTest extends TestCase
 
         try {
             foreach ([CancellationReason::TRANSPORT_CANCELLED, CancellationReason::DEADLINE_EXCEEDED] as $reason) {
-                $context = RunwireRequestContext::standalone();
                 $body = new BufferedRequestBody('_method=PUT');
                 $request = new HttpRequest(
                     'POST',
@@ -39,7 +37,6 @@ final class RunwireEarlyFormRejectionTest extends TestCase
                     ProtocolVersion::HTTP_1_1,
                     Headers::fromArray(['Content-Type' => 'application/x-www-form-urlencoded']),
                     $body,
-                    context: $context,
                 );
                 $writer = new CallbackResponseWriter(
                     static function (int $status, Headers $headers): void {
@@ -49,8 +46,9 @@ final class RunwireEarlyFormRejectionTest extends TestCase
                         unset($chunk);
                     },
                     static function (): void {},
+                    maxBodyBytes: 4096,
                 );
-                $context->cancel($reason);
+                $request->context->cancel($reason);
 
                 try {
                     new RunwireRuntimeAdapter(maxRoutingFormBytes: 64)->context($request, $writer);

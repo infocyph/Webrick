@@ -222,6 +222,8 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | 2026-11-20 | 05 cancellation/abort | See commit for this entry | Adds active Runwire 3.0.1 request-context tests for transport cancellation and deadline-exceeded during URL-encoded routing form override; asserts no buffered bytes consumed, no writer started, no runtime context produced, and static override restored in finally. Source implementation already uses cancellation token on read; unit/QA verification required. | Closes test-level cancellation contract; host transport/body/timeout enforcement remains an explicit deployment responsibility, not an invented Webrick timer. |
 
+| 2026-11-20 | 05 cancellation QA correction | See commit for this entry | [Run 44745877998](https://github.com/infocyph/Webrick/actions/runs/44745877998) failed PHPStan/Psalm/Pest for a malformed `@throws` type, direct call to internal Runwire context factory, and omitted CallbackResponseWriter maxBodyBytes. Existing 833 other tests passed. | Use HttpRequest's own native context (public contract), correct single-backslash Throwable PHPDoc, pass required writer budget. No production code changes or skips. Recheck exact-SHA QA. |
+
 **Tracker update rules:**
 
 ### Verified batch CI ledger — 2026-11-20
