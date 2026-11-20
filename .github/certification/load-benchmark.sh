@@ -22,19 +22,18 @@ HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
 RESULTS="$RESULT_DIR/load-results.jsonl"
 : > "$RESULTS"
-CURRENT_PID=""
-CURRENT_EVENT_SOURCE=""
-CURRENT_EVENT_DESTINATION=""
+declare -A SERVER_PIDS=() SERVER_PORTS=() SERVER_EVENTS=() EVENT_EVIDENCE=()
 
-cleanup_current() {
-    if [[ -n "$CURRENT_PID" ]] && kill -0 "$CURRENT_PID" 2>/dev/null; then
-        stop_server "$CURRENT_PID" || true
-    fi
-    if [[ -n "$CURRENT_EVENT_SOURCE" && -f "$CURRENT_EVENT_SOURCE" ]]; then
-        cp "$CURRENT_EVENT_SOURCE" "$CURRENT_EVENT_DESTINATION"
-    fi
+cleanup_servers() {
+    local version
+    for version in "${!SERVER_PIDS[@]}"; do
+        stop_server "${SERVER_PIDS[$version]}" || true
+        if [[ -f "${SERVER_EVENTS[$version]:-}" ]]; then
+            cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}" || true
+        fi
+    done
 }
-trap cleanup_current EXIT
+trap cleanup_servers EXIT
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 16384 /dev/zero > "$PAYLOAD"
@@ -155,10 +154,11 @@ start_server() {
     local root="$1"
     local mode="$2"
     local port="$3"
-    local label="$4"
-    local log="$RESULT_DIR/${label}-${mode}.log"
+    local version="$4"
+    local trial="$5"
+    local log="$RESULT_DIR/${version}-t${trial}-${mode}.log"
     local admission=native
-    if [[ "$label" == candidate-* ]]; then
+    if [[ "$version" == candidate ]]; then
         admission=middleware
     fi
 
@@ -167,16 +167,13 @@ start_server() {
     else
         WEBRICK_CERT_ADMISSION="$admission" php "$HARNESS" runwire             "--root=${root}"             "--address=127.0.0.1:${port}"             "--recycle=0" >"$log" 2>&1 &
     fi
-    local pid=$!
+    SERVER_PIDS[$version]=$!
+    SERVER_PORTS[$version]=$port
 
     if ! wait_ready "http://127.0.0.1:${port}"; then
         cat "$log" >&2 || true
-        kill "$pid" 2>/dev/null || true
-        wait "$pid" 2>/dev/null || true
         return 1
     fi
-
-    echo "$pid"
 }
 
 stop_server() {
@@ -379,7 +376,7 @@ record_wrk() {
     failed=$((connect_errors + read_errors + write_errors + timeout_errors))
     rss="$(awk 'max < $1 { max = $1 } END { print max + 0 }' "$rss_samples")"
     if [[ "$mode" == runwire ]]; then
-        assert_load_worker_events "$CURRENT_EVENT_SOURCE"
+        assert_load_worker_events "${SERVER_EVENTS[$version]}"
     fi
     metrics="$(fetch_drained_metrics "$port" "$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-settling.jsonl" "$request_timeout")"
 
@@ -407,67 +404,66 @@ record_wrk() {
         }' >> "$RESULTS"
 }
 
-run_trial() {
-    local version="$1"
-    local root="$2"
-    local mode="$3"
-    local port="$4"
-    local trial="$5"
-
-    local pid
-    CURRENT_EVENT_SOURCE=""
-    CURRENT_EVENT_DESTINATION=""
+warm_server() {
+    local version="$1" root="$2" mode="$3" port="$4" trial="$5"
     if [[ "$mode" == runwire ]]; then
-        CURRENT_EVENT_SOURCE="$root/.runtime-certification/router.php.supervisor-events.jsonl"
-        CURRENT_EVENT_DESTINATION="$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
+        SERVER_EVENTS[$version]="$root/.runtime-certification/router.php.supervisor-events.jsonl"
+        EVENT_EVIDENCE[$version]="$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
     fi
-    pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
-    CURRENT_PID="$pid"
-
+    start_server "$root" "$mode" "$port" "$version" "$trial"
     assert_correctness "$port"
     assert_rejection_probes "$mode" "$port"
     wrk -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+}
 
-    for concurrency in $SELECTED_CONCURRENCIES; do
-        record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
-        record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
-        record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
-        record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
-        record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
-
-        record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
-        for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
-            record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" "$port" "$pid" "/cert/$workload"
-        done
-    done
-
-    stop_server "$pid"
-    if [[ "$mode" == runwire ]]; then
-        cp "$CURRENT_EVENT_SOURCE" "$CURRENT_EVENT_DESTINATION"
-        assert_load_worker_events "$CURRENT_EVENT_DESTINATION"
+record_pair() {
+    local mode="$1" concurrency="$2" trial="$3" workload="$4" path="$5"
+    local duration="${6:-$DURATION_SECONDS}"
+    local -a versions=(baseline candidate)
+    if (( trial % 2 == 0 )); then
+        versions=(candidate baseline)
     fi
-    CURRENT_PID=""
-    CURRENT_EVENT_SOURCE=""
-    CURRENT_EVENT_DESTINATION=""
+    local version
+    for version in "${versions[@]}"; do
+        record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" \
+            "${SERVER_PORTS[$version]}" "${SERVER_PIDS[$version]}" "$path" "$duration"
+    done
 }
 
 run_mode_pair() {
     local mode="$1"
-    local baseline_port="$2"
-    local candidate_port="$3"
-
+    local -A ports=([baseline]="$2" [candidate]="$3")
+    local trial concurrency workload version
     for trial in $(seq 1 "$TRIALS"); do
-        if (( trial % 2 == 1 )); then
-            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
-            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
-        else
-            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
-            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
-        fi
+        warm_server baseline "$BASELINE_ROOT" "$mode" "${ports[baseline]}" "$trial"
+        warm_server candidate "$CANDIDATE_ROOT" "$mode" "${ports[candidate]}" "$trial"
+        # Keep matching samples close while running only one load client at a time.
+        for concurrency in $SELECTED_CONCURRENCIES; do
+            record_pair "$mode" "$concurrency" "$trial" static /cert/static
+            record_pair "$mode" "$concurrency" "$trial" dynamic /cert/dynamic/42
+            record_pair "$mode" "$concurrency" "$trial" json /cert/json
+            record_pair "$mode" "$concurrency" "$trial" stream /cert/stream
+            record_pair "$mode" "$concurrency" "$trial" upload /cert/upload
+
+            record_pair "$mode" "$concurrency" "$trial" not_found /cert/missing "$PARITY_DURATION_SECONDS"
+            record_pair "$mode" "$concurrency" "$trial" method_not_allowed /cert/static "$PARITY_DURATION_SECONDS"
+            record_pair "$mode" "$concurrency" "$trial" file /cert/file "$PARITY_DURATION_SECONDS"
+            record_pair "$mode" "$concurrency" "$trial" range /cert/file "$PARITY_DURATION_SECONDS"
+            record_pair "$mode" "$concurrency" "$trial" slow /cert/slow/5 "$PARITY_DURATION_SECONDS"
+            for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
+                record_pair "$mode" "$concurrency" "$trial" "$workload" "/cert/$workload"
+            done
+        done
+        for version in baseline candidate; do
+            stop_server "${SERVER_PIDS[$version]}"
+            unset 'SERVER_PIDS[$version]' 'SERVER_PORTS[$version]'
+            if [[ "$mode" == runwire ]]; then
+                cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}"
+                assert_load_worker_events "${EVENT_EVIDENCE[$version]}"
+            fi
+        done
+        SERVER_EVENTS=()
+        EVENT_EVIDENCE=()
     done
 }
 
