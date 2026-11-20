@@ -34,6 +34,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use ReflectionClass;
 use UnexpectedValueException;
 use WeakReference;
 
@@ -161,19 +162,27 @@ final class CompiledTaggedMiddlewareTest extends TestCase
      * @throws \LogicException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
+     * @throws \ReflectionException
      */
     public function testEmptyTaggedPipelineStillRejectsInvalidTerminalResult(): void
     {
         [, $container] = $this->fixture(LifetimeEnum::Scoped, false);
-        $tagged = new \Infocyph\Webrick\Router\Dispatch\RuntimeTaggedMiddleware('pre', new InterMixRuntime($container));
+        // Reflect the internal implementation without exposing it as public API.
+        $type = new ReflectionClass('Infocyph\\Webrick\\Router\\Dispatch\\RuntimeTaggedMiddleware');
+        $tagged = $type->newInstanceArgs(['pre', new InterMixRuntime($container)]);
 
-        $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage('Compiled middleware pipeline must return ');
-
-        $tagged(
-            Request::fake(uri: '/tag/invalid'),
-            static fn(Request $request): string => $request->getUri()->getPath(),
-        );
+        try {
+            $type->getMethod('__invoke')->invokeArgs($tagged, [
+                Request::fake(uri: '/tag/invalid'),
+                static fn(Request $request): string => $request->getUri()->getPath(),
+            ]);
+            self::fail('Empty tagged middleware returned an invalid terminal result.');
+        } catch (UnexpectedValueException $exception) {
+            self::assertSame(
+                'Compiled middleware pipeline must return ' . Response::class . '.',
+                $exception->getMessage(),
+            );
+        }
     }
 
     /**
