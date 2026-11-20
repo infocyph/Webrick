@@ -282,23 +282,15 @@ final readonly class CompiledRouterKernel
 
         try {
             try {
-                if ($context->preRoutingResponse !== null) {
+                $response = $this->earlyRuntimeResponse($context);
+                if ($response !== null) {
+                    if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                        $response = self::headResponse($response);
+                    }
+                    $response = $this->consumeRuntimeResponse($response, $responseConsumer);
                     $this->profiler?->mark('response_ready');
 
-                    return $this->consumeRuntimeResponse($context->preRoutingResponse, $responseConsumer);
-                }
-
-                if ($this->preRoutingGate !== null) {
-                    $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
-                    if ($response !== null) {
-                        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-                            $response = self::headResponse($response);
-                        }
-                        $response = $this->consumeRuntimeResponse($response, $responseConsumer);
-                        $this->profiler?->mark('response_ready');
-
-                        return $response;
-                    }
+                    return $response;
                 }
 
                 $response = $this->dispatchRoutingInput($context->routing, $request, $context, $responseConsumer);
@@ -322,6 +314,18 @@ final readonly class CompiledRouterKernel
         } catch (RuntimeResponseWriteException $failure) {
             throw $failure->failure;
         }
+    }
+
+    /** @throws \InvalidArgumentException */
+    private function earlyRuntimeResponse(RuntimeRequestContext $context): ?Response
+    {
+        if ($context->preRoutingResponse !== null) {
+            return $context->preRoutingResponse;
+        }
+
+        return $this->preRoutingGate === null
+            ? null
+            : $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
     }
 
     public function requiresHostRouting(): bool
