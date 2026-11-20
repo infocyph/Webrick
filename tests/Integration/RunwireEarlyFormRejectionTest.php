@@ -89,7 +89,9 @@ final class RunwireEarlyFormRejectionTest extends TestCase
 
             self::assertNull($accepted->preRoutingResponse);
             self::assertSame('PUT', $accepted->routing->method);
-            self::assertSame('PUT', $accepted->request()->getMethod());
+            // The wire method stays POST; routing observes the effective PUT override.
+            self::assertSame('POST', $accepted->request()->getMethod());
+            self::assertSame('PUT', $accepted->request()->getEffectiveMethod());
             self::assertSame('PUT', $accepted->request()->post('_method'));
         } finally {
             $configuration->setValue($previous);

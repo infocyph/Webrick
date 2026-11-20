@@ -45,6 +45,13 @@ Runtime release certification
 For the Webrick 6.1 ``feature/risk-admission`` development branch,
 the full load/soak workflow is deliberately deferred until final readiness:
 intermediate commits run Security & Standards, Sphinx and functional checks.
+The PHPForge benchmark matrix is also deferred on intermediate pull requests
+without disabling PHPForge's QA, PHPStan, Psalm, taint analysis, security, or
+package checks. On the final candidate SHA, manually invoke
+``Security & Standards`` with ``workflow_dispatch`` to run the full
+PHPForge benchmark matrix, and require its success. Scheduled and main-branch
+runs retain normal benchmark coverage.
+
 After all non-performance work passes at the final SHA, invoke
 ``Runtime Release Certification`` via GitHub Actions
 ``workflow_dispatch`` on that exact branch and require every SAPI/Runwire

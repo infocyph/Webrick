@@ -211,6 +211,29 @@ describe('TelemetryMiddleware - propagation and logging', function () {
             ->and($record['message'])->toContain('span=')
             ->and($record['message'])->toContain('[w3c]');
     });
+    test('preserves decorated null loggers and safely bounds the logged client IP', function () {
+        $logger = new class extends \Psr\Log\NullLogger {
+            /** @var list<string> */
+            public array $messages = [];
+
+            #[\Override]
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                unset($level, $context);
+                $this->messages[] = (string) $message;
+            }
+        };
+        $middleware = new TelemetryMiddleware($logger);
+        $middleware(
+            mockRequest('GET', '/safe')->withAttribute('client_ip', "203.0.113.10\r\nFORGED"),
+            static fn(): Response => Response::noContent(),
+        );
+
+        expect($logger->messages)->toHaveCount(1)
+            ->and($logger->messages[0])->toContain('203.0.113.10\\r\\nFORGED')
+            ->and($logger->messages[0])->not->toContain("\r\n");
+    });
+
     test('generates independent fixed-width cryptographic identifiers across requests', function () {
         $middleware = new TelemetryMiddleware(new \Psr\Log\NullLogger());
         $traces = [];

@@ -110,7 +110,10 @@ Rolling deployment and rollback
    ``Runtime Release Certification`` ``workflow_dispatch``, rather than
    automatically on every intermediate code push. The 2% RPM, 15% p99 and
    32-MiB RSS budgets, complete response validation and 30-minute soak
-   remain mandatory.
+   remain mandatory. Run the full PHPForge benchmark matrix at the same final
+   source SHA through the manually dispatched ``Security & Standards``
+   workflow; intermediate pull requests still require all its non-performance
+   quality and security checks.
 4. Drain current PHP-FPM or Runwire workers, switch the active application
    symlink/route to the prebuilt release, restart workers as appropriate for
    OPcache settings and verify health, metrics and transport behavior.

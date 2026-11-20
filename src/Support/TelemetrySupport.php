@@ -126,7 +126,7 @@ final class TelemetrySupport
         ?string $requestId,
         string $mode,
     ): void {
-        if ($log instanceof \Psr\Log\NullLogger) {
+        if ($log::class === \Psr\Log\NullLogger::class) {
             return;
         }
 
@@ -135,6 +135,7 @@ final class TelemetrySupport
         $ip = \is_string($clientIp)
             ? $clientIp
             : (\is_string($remoteAddr) ? $remoteAddr : '-');
+        $ip = substr(str_replace(["\r", "\n"], ['\\r', '\\n'], $ip), 0, 128);
         $fromProxy = $req->getAttribute('is_trusted_proxy') === true ? 'proxy' : 'direct';
         $method = $req->getMethod();
         $path = substr(str_replace(["\r", "\n"], ['\\r', '\\n'], $req->getUri()->getPath() ?: '/'), 0, 2048);
