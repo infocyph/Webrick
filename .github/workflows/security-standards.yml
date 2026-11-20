@@ -118,3 +118,40 @@ jobs:
           }
           ' "$consumer"
 
+      - name: Verify archived package with PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: redis,intl,brotli,zstd
+
+      - name: Install same archive in a clean PHP 8.4 no-dev consumer
+        shell: bash
+        run: |
+          consumer="$RUNNER_TEMP/webrick-consumer-php84"
+          package="$(cat "$RUNNER_TEMP/webrick-package-path")"
+          mkdir -p "$consumer"
+          composer init --working-dir="$consumer" --name=webrick/consumer-php84 --type=project --no-interaction
+          composer config --working-dir="$consumer" minimum-stability dev
+          composer config --working-dir="$consumer" repositories.local path "$package"
+          composer require --working-dir="$consumer" --no-update "infocyph/webrick:*"
+          composer update --working-dir="$consumer" --no-dev --no-interaction --no-progress --prefer-dist
+          test ! -d "$consumer/vendor/infocyph/pathwise"
+          php -r '
+          require $argv[1] . "/vendor/autoload.php";
+          $middleware = new \Infocyph\Webrick\Middleware\RiskAdmissionMiddleware(
+              static fn(): \Infocyph\Webrick\Middleware\RiskDecision
+                  => \Infocyph\Webrick\Middleware\RiskDecision::allow(),
+          );
+          $response = $middleware(
+              \Infocyph\Webrick\Request\Request::fake(),
+              static fn(): \Infocyph\Webrick\Response\Response
+                  => \Infocyph\Webrick\Response\Response::plaintext("ok", 200),
+          );
+          if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== "ok") {
+              throw new RuntimeException("PHP 8.4 no-dev archive consumer smoke failed.");
+          }
+          if (class_exists(\Infocyph\Pathwise\Storage\StorageContext::class)) {
+              throw new RuntimeException("Pathwise must remain optional in PHP 8.4.");
+          }
+          ' "$consumer"

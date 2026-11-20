@@ -24,7 +24,7 @@ final class RunwireEarlyFormRejectionTest extends TestCase
     {
         $configuration = new ReflectionProperty(ServerRequest::class, 'methodParamOverride');
         $previous = Request::getMethodParamOverride();
-        $configuration->setValue(true);
+        $configuration->setValue(null, true);
 
         try {
             $body = new BufferedRequestBody('_method=PUT&name=abc');
@@ -94,7 +94,7 @@ final class RunwireEarlyFormRejectionTest extends TestCase
             self::assertSame('PUT', $accepted->request()->getEffectiveMethod());
             self::assertSame('PUT', $accepted->request()->post('_method'));
         } finally {
-            $configuration->setValue($previous);
+            $configuration->setValue(null, $previous);
         }
     }
 }
