@@ -10,6 +10,16 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 
 describe('Request', function () {
+    it('preserves canonical paths and normalizes noncanonical segments', function () {
+        expect(Uri::normalizePath('/articles/latest/'))->toBe('/articles/latest/')
+            ->and(Uri::normalizePath('/articles/%2e%2e/next'))->toBe('/articles/%2e%2e/next')
+            ->and(Uri::normalizePath('/articles//latest'))->toBe('/articles/latest')
+            ->and(Uri::normalizePath('/articles/./latest/../'))->toBe('/articles/')
+            ->and(Uri::normalizePath('/.well-known/key'))->toBe('/.well-known/key')
+            ->and(Uri::normalizePath('../articles/../latest'))->toBe('../latest')
+            ->and(Uri::normalizePath(''))->toBe('/');
+    });
+
     it('creates from globals', function () {
         $_SERVER = [
             'REQUEST_METHOD' => 'GET',

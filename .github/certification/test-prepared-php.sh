@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRATCH="$(mktemp -d)"
 trap 'rm -rf "$SCRATCH"' EXIT
 HELPER="$SCRIPT_DIR/prepared-php.sh"
-bash "$HELPER" capture "$SCRATCH/captured"
+bash "$HELPER" capture "$SCRATCH/captured" "$@"
 
 # Relocation includes spaces and an ampersand to exercise literal INI paths.
 RESTORED="$SCRATCH/relocated runtime & modules"
@@ -39,6 +39,16 @@ if bash "$HELPER" activate "$SCRATCH/changed-binary" > "$SCRATCH/output" 2>&1; t
 fi
 grep -q 'captured identity' "$SCRATCH/output"
 
+if [[ -f "$RESTORED/bin/php-fpm" ]]; then
+    cp -R -- "$RESTORED" "$SCRATCH/changed-fpm"
+    printf 'not the captured FastCGI executable' > "$SCRATCH/changed-fpm/bin/php-fpm"
+    if bash "$HELPER" activate "$SCRATCH/changed-fpm" > "$SCRATCH/output" 2>&1; then
+        echo 'Accepted a changed PHP-FPM executable.' >&2
+        exit 1
+    fi
+    grep -q 'Prepared PHP-FPM executable does not match' "$SCRATCH/output"
+fi
+
 cp -R -- "$SCRATCH/captured" "$SCRATCH/wrong-version"
 jq '.version = "8.5.999"' "$SCRATCH/wrong-version/manifest.json" > "$SCRATCH/manifest.json"
 mv -- "$SCRATCH/manifest.json" "$SCRATCH/wrong-version/manifest.json"
@@ -55,4 +65,4 @@ if bash "$HELPER" activate "$SCRATCH/missing-modules" > "$SCRATCH/output" 2>&1; 
     echo 'Accepted missing extension modules.' >&2
     exit 1
 fi
-echo 'Five prepared-runtime checks passed: relocation/child PHP, host selection, executable identity, patch identity and missing modules.'
+echo 'Prepared runtime checks passed: relocation, host selection, executable and patch identity, and missing modules.'

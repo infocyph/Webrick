@@ -44,11 +44,28 @@ activate_runtime() {
         echo 'Prepared PHP version or loaded modules differ from dependency preparation.' >&2
         return 1
     fi
+    local fpm_checksum
+    fpm_checksum="$(jq -r '.fpm_sha256 // empty' <<<"$manifest")"
+    if [[ -n "$fpm_checksum" ]]; then
+        if [[ "$(sha256sum "$root/bin/php-fpm" | cut -d ' ' -f 1)" != "$fpm_checksum" ]]; then
+            echo 'Prepared PHP-FPM executable does not match its captured identity.' >&2
+            return 1
+        fi
+        local fpm_details fpm_modules
+        fpm_details="$(PHPRC="$root/php.ini" PHP_INI_SCAN_DIR="$root/ini" "$root/bin/php-fpm" -v)"
+        fpm_modules="$(PHPRC="$root/php.ini" PHP_INI_SCAN_DIR="$root/ini" "$root/bin/php-fpm" -m)"
+        if [[ "$fpm_details" != "PHP $(jq -er '.version' <<<"$manifest") (fpm-fcgi)"* ]] \
+            || ! grep -Fxq redis <<<"$fpm_modules" || ! grep -Fxq 'Zend OPcache' <<<"$fpm_modules"; then
+            echo 'Prepared PHP-FPM version, Redis or OPcache did not match preparation.' >&2
+            return 1
+        fi
+    fi
     jq -r '"Verified prepared PHP \(.version) with \(.modules | length) loaded modules"' <<<"$actual"
 }
 
 capture_runtime() {
     local root="$1" information binary extensions ini filename target checksum index=0
+    local fpm="${2:-}" fpm_checksum=''
     information="$(php_information "$(command -v php)")"
     binary="$(jq -er '.binary' <<<"$information")"
     extensions="$(jq -er '.extensions' <<<"$information")"
@@ -68,17 +85,23 @@ capture_runtime() {
         index=$((index + 1))
     done < <(jq -r '(.scanned // "") | split(",")[] | gsub("^[[:space:]]+|[[:space:]]+$"; "") | select(length > 0)' <<<"$information")
     checksum="$(sha256sum "$root/bin/php" | cut -d ' ' -f 1)"
-    jq --arg checksum "$checksum" '. + {binary_sha256:$checksum}' <<<"$information" > "$root/manifest.json"
+    if [[ -n "$fpm" ]]; then
+        cp --preserve=mode -- "$fpm" "$root/bin/php-fpm"
+        fpm_checksum="$(sha256sum "$root/bin/php-fpm" | cut -d ' ' -f 1)"
+    fi
+    jq --arg checksum "$checksum" --arg fpm "$fpm_checksum" '
+        . + {binary_sha256:$checksum} + (if $fpm == "" then {} else {fpm_sha256:$fpm} end)
+    ' <<<"$information" > "$root/manifest.json"
     activate_runtime "$root"
 }
 
-if (( $# != 2 )); then
-    echo 'Usage: prepared-php.sh capture|activate directory' >&2
+if (( $# < 2 || $# > 3 )) || [[ "$1" == activate && $# != 2 ]]; then
+    echo 'Usage: prepared-php.sh capture directory [php-fpm] | activate directory' >&2
     exit 64
 fi
 PREPARED_PHP_ROOT="$(realpath -m -- "$2")"
 case "$1" in
-    capture) capture_runtime "$PREPARED_PHP_ROOT" ;;
+    capture) capture_runtime "$PREPARED_PHP_ROOT" "${3:-}" ;;
     activate) activate_runtime "$PREPARED_PHP_ROOT" ;;
     *) echo 'Expected capture or activate.' >&2; exit 64 ;;
 esac

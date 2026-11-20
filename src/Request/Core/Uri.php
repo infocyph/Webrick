@@ -141,6 +141,10 @@ final class Uri implements \Stringable
         }
 
         $absolute = $path[0] === '/';
+        if ($absolute && !str_contains($path, '//') && !str_contains($path, '/.')) {
+            return $path;
+        }
+
         $trailingSlash = str_ends_with($path, '/') || str_ends_with($path, '/.') || str_ends_with($path, '/..');
         $stack = [];
         foreach (explode('/', $path) as $segment) {

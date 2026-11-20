@@ -48,24 +48,32 @@ counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,
 and bounded synthetic provider latency. Baseline uses ordinary host middleware;
 candidate uses ``RiskAdmissionMiddleware`` with the same host policy and account
 lookup. Wrong-password responses are measured separately from successful logins.
-Each worker reuses an immutable middleware binding per protected workload;
-requests and decisions are still evaluated afresh and never retained by that
-binding. Middleware construction is preparation work, not per-request load.
+Persistent Runwire workers reuse an immutable middleware binding per protected
+workload. PHP-FPM constructs the binding within each request's PHP lifecycle.
+Both runtimes evaluate each request afresh.
 
 Supply an isolated, unauthenticated loopback Redis service through
 ``IC_REDIS_HOST=127.0.0.1`` and ``IC_REDIS_PORT``. The hosted jobs provision their
-own service. The fixture uses synthetic credentials and must never use production
-Redis. Its routes and forced decisions are certification tools, excluded from
+own service. Performance collectors connect directly over loopback, so
+short-lived connections do not carry over through a Docker published port.
+The fixture uses synthetic credentials and must never use production Redis.
+Its routes and forced decisions are certification tools, excluded from
 the distributed package. Its seeded clearance and delayed provider are workload
 fixtures, not production issuance or live CAPTCHA verification.
 
-The normal gate retains three warmed 10-second trials at concurrency 1, 5, 20
-and 50, with 384 required rows and 64 comparisons per runtime mode. Budgets remain
+The gate runs three warmed trials at concurrency 1, 5, 20 and 50, with
+384 required rows and 64 comparisons per runtime mode. Samples normally run for
+10 seconds. Runwire tests of bcrypt at concurrency 20 and 50 use at least
+30 seconds to collect more completed requests for the p99 comparison. Budgets remain
 2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
-The hosted matrix runs each concurrency on its own runner and Redis service,
-with baseline and candidate paired on that runner. All four concurrency artifacts
+The SAPI lane sends HTTP through Nginx to a two-worker PHP-FPM pool with OPcache.
+The Runwire lane uses its optional native HTTP worker. Each concurrency has its
+own runner and Redis fixture, and each workload is measured as an adjacent
+baseline and candidate pair. The hosted collector assigns distinct CPUs to
+the server, load generator, and observer with Redis, and records their affinity.
+All four concurrency artifacts
 must have matching commit, runtime and dependency provenance before aggregation.
-Dependency preparation captures the PHP executable, extension modules and INI
+Dependency preparation captures the PHP CLI and FPM executables, extension modules and INI
 configuration in the current-run artifact. Each load shard restores and verifies
 that runtime, including reruns; the installer's moving minor-version selection
 cannot change only one shard's PHP patch. Mixed patch-version evidence remains
@@ -89,7 +97,7 @@ early collector failure too.
 Post-load telemetry must show drained queues and requests within the workload's
 existing client deadline: two seconds for ordinary workloads, ten seconds for
 bcrypt workloads. The control probe queues behind legitimate in-flight work on
-a single SAPI worker; it must share that deadline. All settling samples are
+busy PHP-FPM or Runwire workers; it must share that deadline. All settling samples are
 retained. This wait does not alter measured latency, throughput, transport
 errors or in-load RSS peaks. Invalid telemetry, persistent leaked state and
 worker restarts still fail certification.

@@ -9,6 +9,7 @@ TRIALS="${5:-3}"
 PARITY_DURATION_SECONDS="${6:-$DURATION_SECONDS}"
 MODE="${7:-all}"
 CONCURRENCY="${8:-all}"
+RUNWIRE_TAIL_SECONDS="${9:-$DURATION_SECONDS}"
 
 source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
 SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
@@ -16,6 +17,13 @@ SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
     echo "Certification mode must be all, sapi or runwire." >&2
     exit 1
+fi
+
+SERVER_COMMAND=()
+LOAD_CLIENT=(wrk)
+if [[ -n "${CERT_SERVER_CPUS:-}" && -n "${CERT_LOAD_CPUS:-}" ]]; then
+    SERVER_COMMAND=(taskset -c "$CERT_SERVER_CPUS")
+    LOAD_CLIENT=(taskset -c "$CERT_LOAD_CPUS" wrk)
 fi
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
@@ -40,7 +48,6 @@ head -c 16384 /dev/zero > "$PAYLOAD"
 VALIDATION_SCRIPT="$RESULT_DIR/validate.lua"
 cat > "$VALIDATION_SCRIPT" <<'LUA'
 local workload = os.getenv("CERT_WORKLOAD") or ""
-local close_delimited = os.getenv("CERT_CLOSE_DELIMITED") == "1"
 local threads = {}
 validated = 0
 invalid = 0
@@ -67,10 +74,6 @@ elseif workload == "method_not_allowed" then
     wrk.method = "POST"
 elseif workload == "range" then
     wrk.headers["Range"] = "bytes=0-15"
-end
-
-if close_delimited then
-    wrk.headers["Connection"] = "close"
 end
 
 local function full_match(body, pattern)
@@ -163,9 +166,11 @@ start_server() {
     fi
 
     if [[ "$mode" == "sapi" ]]; then
-        WEBRICK_CERT_ADMISSION="$admission" WEBRICK_CERT_ROOT="$root" php -S "127.0.0.1:${port}" "$HARNESS" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" WEBRICK_CERT_ROOT="$root" \
+            "${SERVER_COMMAND[@]}" bash "$(dirname "$HARNESS")/run-fpm.sh" "$port" "$HARNESS" >"$log" 2>&1 &
     else
-        WEBRICK_CERT_ADMISSION="$admission" php "$HARNESS" runwire             "--root=${root}"             "--address=127.0.0.1:${port}"             "--recycle=0" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" "${SERVER_COMMAND[@]}" php "$HARNESS" runwire \
+            "--root=${root}" "--address=127.0.0.1:${port}" "--recycle=0" >"$log" 2>&1 &
     fi
     SERVER_PIDS[$version]=$!
     SERVER_PORTS[$version]=$port
@@ -293,11 +298,10 @@ assert_invalid_fixture() {
     local port="$2"
     local path="$3"
     local label="$4"
-    local close_delimited="${5:-0}"
     local output="$RESULT_DIR/reject-${label}.txt"
 
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
-        wrk -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT" \
+    CERT_WORKLOAD="$workload" \
+        "${LOAD_CLIENT[@]}" -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT" \
         "http://127.0.0.1:${port}${path}" >"$output" 2>&1
     if (( $(field "CERT Invalid responses" "$output") == 0 )); then
         echo "Response validator accepted invalid fixture ${label}." >&2
@@ -308,7 +312,6 @@ assert_invalid_fixture() {
 assert_rejection_probes() {
     local mode="$1"
     local port="$2"
-    local close_delimited=0
 
     if validate_metrics_json <<<'{}'; then
         echo "Telemetry validator accepted an empty metrics object." >&2
@@ -329,10 +332,7 @@ assert_rejection_probes() {
     assert_invalid_fixture risk_login "$port" /cert/corrupt "${mode}-wrong-risk-login"
     assert_invalid_fixture risk_login_invalid "$port" /cert/corrupt "${mode}-wrong-risk-login-invalid"
 
-    if [[ "$mode" == "sapi" ]]; then
-        close_delimited=1
-    fi
-    assert_invalid_fixture stream "$port" /cert/truncated "${mode}-truncated-stream" "$close_delimited"
+    assert_invalid_fixture stream "$port" /cert/truncated "${mode}-truncated-stream"
 }
 record_wrk() {
     local version="$1"
@@ -345,20 +345,22 @@ record_wrk() {
     local path="$8"
     local duration="${9:-$DURATION_SECONDS}"
 
+    if [[ "$mode" == runwire ]] && (( concurrency >= 20 && RUNWIRE_TAIL_SECONDS > duration )); then
+        case "$workload" in
+            risk_login*|risk_provider_slow) duration="$RUNWIRE_TAIL_SECONDS" ;;
+        esac
+    fi
+
     local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
     local threads
     threads="$(load_threads "$concurrency" "$workload")"
-    local close_delimited=0
     local request_timeout
     request_timeout="$(load_request_timeout "$workload")"
-    if [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
-        close_delimited=1
-    fi
 
     local rss_samples="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-rss.txt"
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
+    CERT_WORKLOAD="$workload" \
         run_load_with_rss "$pid" "$rss_samples" "$out" \
-        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "${request_timeout}s" \
+        "${LOAD_CLIENT[@]}" -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "${request_timeout}s" \
         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}"
 
     local rps complete non2xx p99 rss metrics validated invalid
@@ -413,7 +415,7 @@ warm_server() {
     start_server "$root" "$mode" "$port" "$version" "$trial"
     assert_correctness "$port"
     assert_rejection_probes "$mode" "$port"
-    wrk -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+    "${LOAD_CLIENT[@]}" -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 }
 
 record_pair() {

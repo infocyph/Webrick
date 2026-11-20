@@ -217,8 +217,12 @@ jobs:
 
       - name: Capture the exact PHP runtime for all load shards
         run: |
-          bash candidate/.github/certification/test-prepared-php.sh
-          bash candidate/.github/certification/prepared-php.sh capture prepared-php
+          if ! command -v php-fpm8.5 >/dev/null; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y php8.5-fpm
+          fi
+          bash candidate/.github/certification/test-prepared-php.sh "$(command -v php-fpm8.5)"
+          bash candidate/.github/certification/prepared-php.sh capture prepared-php "$(command -v php-fpm8.5)"
 
       - name: Install the two dependency trees once
         run: |
@@ -248,16 +252,6 @@ jobs:
     needs: performance-dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 100
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379/tcp
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -270,6 +264,7 @@ jobs:
       IC_REDIS_HOST: 127.0.0.1
       CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}
       CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
+      CERT_RUNWIRE_TAIL_SECONDS: '30'
     steps:
       - name: Check out candidate
         uses: actions/checkout@v7
@@ -306,7 +301,7 @@ jobs:
       - name: Install load tools with bounded mirror retries
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y curl jq wrk; then
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y curl jq wrk nginx; then
               exit 0
             fi
             if (( attempt == 3 )); then
@@ -338,6 +333,10 @@ jobs:
             printf 'php_version=%s\n' "$(php -r 'echo PHP_VERSION;')"
             printf 'benchmark_mode=%s\n' "$CERT_MODE"
             printf 'benchmark_concurrency=%s\n' "$CERT_CONCURRENCY"
+            if [[ "$CERT_MODE" == sapi ]]; then
+              printf 'php_fpm_version=%s\n' "$(php-fpm -v | sed -n '1p')"
+              printf 'http_frontend=%s\n' "$(nginx -v 2>&1)"
+            fi
           } | tee cert-results/environment.txt
           for package in infocyph/runwire infocyph/intermix; do
             baseline_version="$(composer --working-dir=baseline show --format=json "$package" | jq -er '.versions[0]')"
@@ -400,12 +399,44 @@ jobs:
           expect_reject analyzer-negative/unknown.jsonl unknown
 
       - name: Run controlled same-run load matrix
-        env:
-          IC_REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
-          bash candidate/.github/certification/load-benchmark.sh \
+          IFS=, read -ra cpu_ranges < <(awk '$1 == "Cpus_allowed_list:" {print $2}' /proc/self/status)
+          cpus=()
+          for range in "${cpu_ranges[@]}"; do
+            first="${range%%-*}"
+            last="${range##*-}"
+            for ((cpu=first; cpu<=last; ++cpu)); do cpus+=("$cpu"); done
+          done
+          if (( ${#cpus[@]} < 3 )); then
+            echo 'Certification needs distinct CPUs for the server, load client and observer.' >&2
+            exit 1
+          fi
+          export CERT_SERVER_CPUS="${cpus[2]}"
+          export CERT_LOAD_CPUS="${cpus[1]}"
+          observer_cpu="${cpus[0]}"
+          if (( ${#cpus[@]} >= 4 )); then
+            CERT_SERVER_CPUS+=",${cpus[3]}"
+          fi
+          printf 'server_cpus=%s\nload_cpu=%s\nobserver_and_redis_cpu=%s\n' \
+            "$CERT_SERVER_CPUS" "$CERT_LOAD_CPUS" "$observer_cpu" > cert-results/cpu-roles.txt
+
+          # Direct loopback avoids connection carryover through Docker's published port.
+          IC_REDIS_PORT="$(php -r '$socket = stream_socket_server("tcp://127.0.0.1:0"); if ($socket === false) exit(1); echo substr(strrchr(stream_socket_get_name($socket, false), ":"), 1);')"
+          export IC_REDIS_PORT
+          redis="$(docker run --detach --rm --network host --cpuset-cpus="$observer_cpu" redis:7-alpine \
+            --bind 127.0.0.1 --protected-mode yes --port "$IC_REDIS_PORT" --save '' --appendonly no)"
+          trap 'docker stop "$redis" >/dev/null' EXIT
+          for attempt in {1..50}; do
+            if [[ "$(docker exec "$redis" redis-cli -p "$IC_REDIS_PORT" ping 2>/dev/null)" == PONG ]]; then
+              break
+            fi
+            sleep 0.1
+          done
+          [[ "$(docker exec "$redis" redis-cli -p "$IC_REDIS_PORT" ping)" == PONG ]]
+          taskset -c "$observer_cpu" bash candidate/.github/certification/load-benchmark.sh \
             "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
-            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE" "$CERT_CONCURRENCY"
+            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE" "$CERT_CONCURRENCY" \
+            "$CERT_RUNWIRE_TAIL_SECONDS"
 
       - name: Upload performance evidence
         if: always()

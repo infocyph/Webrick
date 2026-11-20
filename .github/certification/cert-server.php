@@ -35,7 +35,7 @@ const CERT_FINGERPRINT = 'webrick-runtime-release-certification-v1';
 
 /**
  * The operator selects the checkout whose executable artifacts this tool runs.
- * HTTP request values never choose this root; cli-server receives it from its host environment.
+ * HTTP request values never choose this root; the host sets it in the process environment.
  *
  * @psalm-taint-escape file
  * @psalm-taint-escape ssrf
@@ -454,7 +454,7 @@ function certification_sapi(string $root): void
     )->handle();
 }
 
-if (PHP_SAPI === 'cli-server') {
+if (PHP_SAPI === 'cli-server' || PHP_SAPI === 'fpm-fcgi') {
     $configuredRoot = getenv('WEBRICK_CERT_ROOT');
     $root = certification_root($configuredRoot === false ? '' : $configuredRoot);
     $autoload = $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';

@@ -271,17 +271,6 @@ foreach ($rows as $row) {
     $timeoutErrors = (int) ($socketErrors['timeout'] ?? -1);
     $failed = (int) ($row['failed'] ?? -1);
     $socketErrorTotal = $connectErrors + $readErrors + $writeErrors + $timeoutErrors;
-    $validatedCloseDelimitedStream = $mode === 'sapi'
-        && $workload === 'stream'
-        && $complete > 0
-        && $validated === $complete
-        && $invalid === 0
-        && $readErrors === $complete
-        && $connectErrors === 0
-        && $writeErrors === 0
-        && $timeoutErrors === 0
-        && $non2xx === 0;
-
     if ($complete <= 0) {
         $errors[] = "{$key}: no complete HTTP responses were measured.";
     }
@@ -299,7 +288,7 @@ foreach ($rows as $row) {
     if ($failed !== $socketErrorTotal) {
         $errors[] = "{$key}: socket-error totals are incomplete or inconsistent.";
     }
-    if (!$validatedCloseDelimitedStream && $socketErrorTotal !== 0) {
+    if ($socketErrorTotal !== 0) {
         $errors[] = "{$key}: transport socket errors were observed.";
     }
 
