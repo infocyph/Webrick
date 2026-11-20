@@ -202,3 +202,70 @@ test('load analysis requires protected workloads and distinguishes wrong-passwor
         cleanTestCache($directory);
     }
 });
+
+test('load analyzer preserves paired trial evidence without weakening budget rejection', function (): void {
+    $directory = certificationTestDirectory();
+
+    try {
+        $rows = [];
+        foreach ([1, 2, 3] as $trial) {
+            foreach (certificationCompleteLoadRows() as $row) {
+                $row['trial'] = $trial;
+                if ($row['workload'] === 'dynamic' && $row['concurrency'] === 20) {
+                    $row['rps'] = ($row['version'] === 'baseline' ? 100 : 90) + $trial;
+                    $row['p99'] = ($row['version'] === 'baseline' ? 4 : 9) + $trial;
+                }
+                $rows[] = $row;
+            }
+        }
+        certificationWriteLoadRows($directory, $rows);
+        $process = certificationCliRun('analyze-load.php', [
+            '--input=' . $directory . '/evidence.jsonl',
+            '--summary=' . $directory . '/summary.md',
+            '--json=' . $directory . '/report.json',
+            '--profile=sapi',
+            '--trials=3',
+        ]);
+
+        $report = json_decode((string) file_get_contents($directory . '/report.json'), true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($report) || !is_array($report['comparisons'] ?? null)) {
+            throw new UnexpectedValueException('Load analysis did not produce a comparison report.');
+        }
+
+        $comparison = null;
+        foreach ($report['comparisons'] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            if (($entry['mode'] ?? null) === 'sapi'
+                && ($entry['workload'] ?? null) === 'dynamic'
+                && ($entry['concurrency'] ?? null) === 20) {
+                $comparison = $entry;
+
+                break;
+            }
+        }
+        $baselineSamples = is_array($comparison) ? ($comparison['baseline_samples'] ?? null) : null;
+        $candidateSamples = is_array($comparison) ? ($comparison['candidate_samples'] ?? null) : null;
+        if (!is_array($baselineSamples) || !is_array($candidateSamples)
+            || !is_array($baselineSamples[0] ?? null)
+            || !is_array($baselineSamples[1] ?? null)
+            || !is_array($candidateSamples[1] ?? null)) {
+            throw new UnexpectedValueException('Paired trial diagnostics are absent.');
+        }
+
+        expect($process->isSuccessful())->toBeFalse()
+            ->and($report['errors'] ?? [])->not->toBeEmpty()
+            ->and($baselineSamples)->toHaveCount(3)
+            ->and($candidateSamples)->toHaveCount(3)
+            ->and($baselineSamples[0]['trial'])->toBe(1)
+            ->and($baselineSamples[1]['rps'])->toBe(102)
+            ->and($candidateSamples[1]['rps'])->toBe(92)
+            ->and($comparison['baseline_rps_cv_percent'])->toBeGreaterThan(0)
+            ->and((string) file_get_contents($directory . '/summary.md'))
+            ->toContain('## Trial-level performance diagnostics')
+            ->toContain('| sapi | dynamic | 20 | 2 | 102.00 | 92.00 | 6.00 | 11.00 |');
+    } finally {
+        cleanTestCache($directory);
+    }
+});

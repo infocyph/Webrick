@@ -344,11 +344,18 @@ foreach (array_keys($expected) as $rowKey) {
 $aggregates = [];
 foreach ($groups as $key => $rows) {
     [$mode, $workload, $concurrency, $version] = explode('|', $key, 4);
+    usort($rows, static fn(array $left, array $right): int => (int) ($left['trial'] ?? 0) <=> (int) ($right['trial'] ?? 0));
+    $samples = array_map(static fn(array $row): array => [
+        'trial' => (int) ($row['trial'] ?? 0),
+        'rps' => (float) ($row['rps'] ?? 0),
+        'p99_ms' => (float) ($row['p99'] ?? 0),
+    ], $rows);
     $rps = array_map(static fn(array $row): float => (float) ($row['rps'] ?? 0), $rows);
     $p99 = array_map(static fn(array $row): float => (float) ($row['p99'] ?? 0), $rows);
     $rss = array_map(static fn(array $row): float => (float) ($row['rss_kb'] ?? 0), $rows);
 
     $aggregates[$mode][$workload][$concurrency][$version] = [
+        'samples' => $samples,
         'median_rps' => median($rps),
         'median_rpm' => median($rps) * 60.0,
         'rps_cv_percent' => coefficient_of_variation($rps),
@@ -418,6 +425,9 @@ foreach ($aggregates as $mode => $workloads) {
                 'concurrency' => (int) $concurrency,
                 'baseline_rpm' => $baseline['median_rpm'],
                 'candidate_rpm' => $candidate['median_rpm'],
+                'baseline_rps_cv_percent' => $baseline['rps_cv_percent'],
+                'baseline_samples' => $baseline['samples'],
+                'candidate_samples' => $candidate['samples'],
                 'throughput_regression_percent' => $throughputRegression,
                 'baseline_p99_ms' => $baselineP99,
                 'candidate_p99_ms' => $candidateP99,
@@ -476,6 +486,41 @@ foreach ($comparisons as $row) {
         $row['candidate_rps_cv_percent'],
     );
 }
+// Trial-level data is diagnostic only: acceptance budgets are unchanged.
+$regressions = array_filter($comparisons, static fn(array $row): bool =>
+    $row['throughput_regression_percent'] > $throughputBudget
+    || $row['p99_regression_percent'] > $p99Budget
+    || $row['rss_delta_mb'] > $memoryBudgetMb,
+);
+if ($regressions !== []) {
+    $markdown[] = '';
+    $markdown[] = '## Trial-level performance diagnostics';
+    $markdown[] = '';
+    $markdown[] = 'Only budget-exceeding cells are shown. Samples are paired by trial number; isolated differences do not establish a code-level cause.';
+    $markdown[] = '';
+    $markdown[] = '| Mode | Workload | C | Trial | Baseline RPS | Candidate RPS | Baseline p99 ms | Candidate p99 ms |';
+    $markdown[] = '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |';
+    foreach ($regressions as $row) {
+        foreach ($row['baseline_samples'] as $index => $baselineSample) {
+            $candidateSample = $row['candidate_samples'][$index] ?? null;
+            if (!is_array($candidateSample)) {
+                continue;
+            }
+            $markdown[] = sprintf(
+                '| %s | %s | %d | %d | %.2f | %.2f | %.2f | %.2f |',
+                $row['mode'],
+                $row['workload'],
+                $row['concurrency'],
+                $baselineSample['trial'],
+                $baselineSample['rps'],
+                $candidateSample['rps'],
+                $baselineSample['p99_ms'],
+                $candidateSample['p99_ms'],
+            );
+        }
+    }
+}
+
 if ($errors !== []) {
     $markdown[] = '';
     $markdown[] = '## Failures';
