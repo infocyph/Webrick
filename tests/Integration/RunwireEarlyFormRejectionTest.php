@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
+use Infocyph\Runwire\Exception\CancelledException;
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\Internal\BufferedRequestBody;
 use Infocyph\Runwire\Http\Internal\CallbackResponseWriter;
+use Infocyph\Runwire\RequestContext as RunwireRequestContext;
+use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Webrick\Request\Core\ServerRequest;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
@@ -19,6 +22,52 @@ use UnexpectedValueException;
 
 final class RunwireEarlyFormRejectionTest extends TestCase
 {
+    /** @throws \\Throwable */
+    public function testCancelledRoutingFormReadNeverConsumesBodyOrStartsResponse(): void
+    {
+        $configuration = new ReflectionProperty(ServerRequest::class, 'methodParamOverride');
+        $previous = Request::getMethodParamOverride();
+        $configuration->setValue(null, true);
+
+        try {
+            foreach ([CancellationReason::TRANSPORT_CANCELLED, CancellationReason::DEADLINE_EXCEEDED] as $reason) {
+                $context = RunwireRequestContext::standalone();
+                $body = new BufferedRequestBody('_method=PUT');
+                $request = new HttpRequest(
+                    'POST',
+                    '/forms',
+                    ProtocolVersion::HTTP_1_1,
+                    Headers::fromArray(['Content-Type' => 'application/x-www-form-urlencoded']),
+                    $body,
+                    context: $context,
+                );
+                $writer = new CallbackResponseWriter(
+                    static function (int $status, Headers $headers): void {
+                        unset($status, $headers);
+                    },
+                    static function (string $chunk): void {
+                        unset($chunk);
+                    },
+                    static function (): void {},
+                );
+                $context->cancel($reason);
+
+                try {
+                    new RunwireRuntimeAdapter(maxRoutingFormBytes: 64)->context($request, $writer);
+                    self::fail('Cancelled routing form unexpectedly created a runtime context.');
+                } catch (CancelledException $exception) {
+                    self::assertSame($reason, $exception->reason);
+                }
+
+                self::assertSame(strlen('_method=PUT'), $body->bufferedBytes());
+                self::assertFalse($writer->isStarted());
+                self::assertFalse($writer->isEnded());
+            }
+        } finally {
+            $configuration->setValue(null, $previous);
+        }
+    }
+
     /** @throws \Throwable */
     public function testFormOverrideRejectsOversizeBeforeRoutingAndAcceptsBoundedForms(): void
     {
