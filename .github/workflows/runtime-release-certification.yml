@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feature/runwire
+      - feature/risk-admission
   workflow_dispatch:
     inputs:
       duration_seconds:
