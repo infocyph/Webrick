@@ -167,8 +167,8 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | Batch | Actions (cross-section mapping) | Work and acceptance criteria | Priority | Status |
 |---|---|---|---|---|
-| **00 — audit** | AUD-00 (CORE–OPS) | Commit complete 13-section audit plus this deduplicated execution plan. Freeze baseline evidence and keep work traceable. | P1 | **In progress** |
-| **01 — documentation contract** | DOC-01 (COMPAT-04, CONFIG-04, OPS-06), DOC-02 (CORE-01, FLOW-02) | Correct request-limits docs: remove imaginary `maxUploadSeconds`, assign transport-owned slow-body timeouts, correct status codes and runnable examples. Check updated docs links and Sphinx. | P1 | Pending |
+| **00 — audit** | AUD-00 (CORE–OPS) | Commit complete 13-section audit plus this deduplicated execution plan. Freeze baseline evidence and keep work traceable. | P1 | **Committed** (8bc3070) |
+| **01 — documentation contract** | DOC-01 (COMPAT-04, CONFIG-04, OPS-06), DOC-02 (CORE-01, FLOW-02) | Correct request-limits docs: remove imaginary `maxUploadSeconds`, assign transport-owned slow-body timeouts, correct status codes and runnable examples. Check updated docs links and Sphinx. | P1 | **Committed; CI verification pending** |
 | **02 — telemetry identity + logging** | SEC-IDENT-01 (SEC-07, OBS-02), OBS-LOG-01 (OBS-02/04, PERF-02), OBS-LOG-02 (SEC-01) | Remove `uniqid` fallbacks, preserve 16/32-digit trace/span and 32-digit request-ID contracts, verify failure propagation; avoid unneeded no-op log formatting, add input-boundary tests and assess PSR-3 context semantics. | P1 | Pending |
 | **03 — baseline diagnostics** | PERF-DIAG-01 (PERF-01/03/05, FLOW-02/10), PERF-DIAG-02 (OPS-11) | Reproduce and attribute the eight exact-SHA load gate breaches; capture valid-response checks, PHP/extension/OPcache parity, run variance and time-series bottlenecks. No relaxed thresholds or changed benchmark workload. | P0 | Pending |
 | **04 — API/stream compatibility** | API-01 (COMPAT-02, REQUEST-03/05), API-02 (CORE-01) | Compare 6.0.4→6.1 response producer scalar/coercion behavior, PHP named params and routing/HEAD/405 semantics; add exact compatibility fixtures and smallest justified fix. | P1 | Pending |
@@ -195,6 +195,8 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | When (UTC) | Batch | Commit SHA | QA evidence | Decision / next |
 |---|---|---|---|---|
-| 2026-11-20 | 00 | Commit captured by GitHub history for this file | Source audit of 487 blobs, 210 source PHP + 104 test PHP, 13 principle sections; existing failure run [44680641511](https://github.com/infocyph/Webrick/actions/runs/44680641511) | Plan authored; code untouched. Batch 01 next. |
+| 2026-11-20 | 00 | 8bc3070208ee72c9cf9016039b20a232abf8a9d1 | Source audit of 487 blobs, 210 source PHP + 104 test PHP, 13 principle sections; existing failure run [44680641511](https://github.com/infocyph/Webrick/actions/runs/44680641511) | Plan authored; code untouched. Batch 01 next. |
+
+| 2026-11-20 | 01 | See GitHub commit history for this tracker entry | Constructor and request-limit behavior reviewed against source; Sphinx and CI not yet verified at the commit. Existing performance failures remain blocking. | Removed imaginary timeout/unknown-body flags; corrected 400/413/431 and examples; awaiting QA. |
 
 **Tracker update rules:** Append a row for each batch commit; record check-run URLs and actual statuses (pass/fail/pending), relevant failure explanations, evidence SHA, and any regression rework. Preserve prior entries. A failed batch remains open until its applicable gates are demonstrably green.
