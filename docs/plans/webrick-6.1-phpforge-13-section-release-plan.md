@@ -169,19 +169,19 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | Batch | Actions (cross-section mapping) | Work and acceptance criteria | Priority | Status |
 |---|---|---|---|---|
-| **00 — audit** | AUD-00 (CORE–OPS) | Commit complete 13-section audit plus this deduplicated execution plan. Freeze baseline evidence and keep work traceable. | P1 | **Committed** (8bc3070) |
-| **01 — documentation contract** | DOC-01 (COMPAT-04, CONFIG-04, OPS-06), DOC-02 (CORE-01, FLOW-02) | Correct request-limits docs: remove imaginary `maxUploadSeconds`, assign transport-owned slow-body timeouts, correct status codes and runnable examples. Check updated docs links and Sphinx. | **Verified** | **Committed; CI verification pending** |
-| **02 — telemetry identity + logging** | SEC-IDENT-01 (SEC-07, OBS-02), OBS-LOG-01 (OBS-02/04, PERF-02), OBS-LOG-02 (SEC-01) | Remove `uniqid` fallbacks, preserve 16/32-digit trace/span and 32-digit request-ID contracts, verify failure propagation; avoid unneeded no-op log formatting, add input-boundary tests and assess PSR-3 context semantics. | **Verified** | **Committed; CI verification pending** |
-| **03 — baseline diagnostics** | PERF-DIAG-01 (PERF-01/03/05, FLOW-02/10), PERF-DIAG-02 (OPS-11) | Reproduce and attribute the eight exact-SHA load gate breaches; capture valid-response checks, PHP/extension/OPcache parity, run variance and time-series bottlenecks. No relaxed thresholds or changed benchmark workload. | P0 | **Tooling committed; measurement deferred to final phase** |
-| **04 — API/stream compatibility** | API-01 (COMPAT-02, REQUEST-03/05), API-02 (CORE-01) | Compare 6.0.4→6.1 response producer scalar/coercion behavior, PHP named params and routing/HEAD/405 semantics; add exact compatibility fixtures and smallest justified fix. | **Verified** | **Scalar contract restored; QA feedback fixes in progress** |
-| **05 — request/body boundaries** | BODY-01 (TYPE-01, REQUEST-04, SEC-01), BODY-02 (OPS-06) | Verify Runwire pre-routing POST `_method` form parse size/time limits, nonseekable/aborted bodies, JSON size/depth and application/transport enforcement; address proven gaps only, test adversarial paths. | **Verified** | **Bounded early form parsing committed; remaining edge-case QA pending** |
-| **06 — artifact trust + lifecycle** | ART-01 (SEC-04/06, CONFIG-04/06), ART-02 (OPS-07/09) | Prove trusted manifest validation precedes executable PHP on every supported loader path; distinguish xxh128 cache fingerprints vs SHA-256 trusted integrity. Preserve legacy compatibility or explicitly document migration; test tampering/races. | **Verified** | **SHA-256 tamper regression test and trust documentation committed; QA pending** |
-| **07 — quality exceptions + workflow** | QA-01 (FLOW-01/02, COMPAT-02), QA-02 (SEC-01, CONFIG-02), QA-03 (FLOW-10) | Resolve or explicitly qualify each of 14 default-deny PHPForge exception policies; reconcile CodeQL source alerts, CI trigger/reusable workflow provenance, optional extensions and no-dev PHP 8.4/8.5 consumer smoke. | **Verified non-performance QA; CodeQL alert status not directly available** | **14 exceptions scanned; PHP 8.4/8.5 no-dev consumer planned in CI; exact-SHA QA and CodeQL signoff pending** |
-| **08 — scoped dispatch and overhead** | STRUCT-HOT-01 (STRUCT-04/11/15, REQUEST-01), MEM-HOT-01 (MEM-01/07/09), PERF-COLD-01 (REQUEST-02) | Profile middleware/telemetry/extension availability, compiled tagged scope and matcher cold/warm boot. Optimize only demonstrated overhead, avoid caching request-scoped objects, add scope isolation parity tests. | P1 | Pending |
-| **09 — SAPI throughput** | PERF-SAPI-01 (PERF-01/03, OPS-01) | Address file c20, stream c5 and risk_allow c50 regressions; preserve file-range, cancellation, MIME, compression and output correctness. Re-run SAPI c1/c5/c20/c50 acceptance. | P0 | Pending |
-| **10 — Runwire throughput** | PERF-RUNWIRE-01 (PERF-01/03, OPS-01/05), DATA-01 (DATA-03/04/06) | Address dynamic/c20 and risk_allow/risk_clearance c50 regressions. Validate real Redis replay/timeout contracts, worker scope, H1/H2/H3, 30-min soak, tail latency and full Runwire load matrix. | P0 | Pending |
-| **11 — operations + migration** | DOC-REL-01 (OPS-07/08/09), CONFIG-REPRO-01 (CONFIG-01/02), STRUCT-CLEAN-01 (STRUCT-13) | Publish 6.0.4→6.1 migration/rollback and production/OPcache guidance, validate executable examples, no-dev artifacts, optional integrations and justified structural candidates; no speculative massive refactor. | **Verified documentation and no-dev packaging** | **Migration/rollback guidance committed; packaging and final verification pending** |
-| **12 — exact-SHA signoff** | RELEASE-01 (FLOW-10, PERF-01/07, OPS-11) | Full PHPForge strict QA, static analysis, security, tests, Sphinx, package consumer, all certification shards AND both performance aggregations green at *same final head*; update final evidence and readiness disposition. | P0 | Pending |
+| **00 — audit** | AUD-00 (CORE–OPS) | Commit complete 13-section audit plus this deduplicated execution plan. Freeze baseline evidence and keep work traceable. | P1 | **Audit and plan committed; original CI cancelled; later cumulative QA green** |
+| **01 — documentation contract** | DOC-01 (COMPAT-04, CONFIG-04, OPS-06), DOC-02 (CORE-01, FLOW-02) | Correct request-limits docs: remove imaginary `maxUploadSeconds`, assign transport-owned slow-body timeouts, correct status codes and runnable examples. Check updated docs links and Sphinx. | P1 | **Docs implemented and verified by strict Sphinx on 6886611 and 466e2c6; original CI cancelled** |
+| **02 — telemetry identity + logging** | SEC-IDENT-01 (SEC-07, OBS-02), OBS-LOG-01 (OBS-02/04, PERF-02), OBS-LOG-02 (SEC-01) | Remove `uniqid` fallbacks, preserve 16/32-digit trace/span and 32-digit request-ID contracts, verify failure propagation; avoid unneeded no-op log formatting, add input-boundary tests and assess PSR-3 context semantics. | P1 | **Entropy and logging fixes verified on 6886611 and 466e2c6** |
+| **03 — baseline diagnostics** | PERF-DIAG-01 (PERF-01/03/05, FLOW-02/10), PERF-DIAG-02 (OPS-11) | Reproduce and attribute the eight exact-SHA load gate breaches; capture valid-response checks, PHP/extension/OPcache parity, run variance and time-series bottlenecks. No relaxed thresholds or changed benchmark workload. | P0 | **Diagnostics tool verified; profiling incomplete; final runtime budgets failing** |
+| **04 — API/stream compatibility** | API-01 (COMPAT-02, REQUEST-03/05), API-02 (CORE-01) | Compare 6.0.4→6.1 response producer scalar/coercion behavior, PHP named params and routing/HEAD/405 semantics; add exact compatibility fixtures and smallest justified fix. | P1 | **6.0.4 scalar-stream compatibility restored; regression QA verified on 6886611 and 466e2c6** |
+| **05 — request/body boundaries** | BODY-01 (TYPE-01, REQUEST-04, SEC-01), BODY-02 (OPS-06) | Verify Runwire pre-routing POST `_method` form parse size/time limits, nonseekable/aborted bodies, JSON size/depth and application/transport enforcement; address proven gaps only, test adversarial paths. | P1 | **Early Runwire form cap and 413 regression verified; additional abort/host-limit review outstanding** |
+| **06 — artifact trust + lifecycle** | ART-01 (SEC-04/06, CONFIG-04/06), ART-02 (OPS-07/09) | Prove trusted manifest validation precedes executable PHP on every supported loader path; distinguish xxh128 cache fingerprints vs SHA-256 trusted integrity. Preserve legacy compatibility or explicitly document migration; test tampering/races. | P1 | **Trusted-manifest tamper test and docs verified; deployment trust/race safeguards remain operational** |
+| **07 — quality exceptions + workflow** | QA-01 (FLOW-01/02, COMPAT-02), QA-02 (SEC-01, CONFIG-02), QA-03 (FLOW-10) | Resolve or explicitly qualify each of 14 default-deny PHPForge exception policies; reconcile CodeQL source alerts, CI trigger/reusable workflow provenance, optional extensions and no-dev PHP 8.4/8.5 consumer smoke. | P1 | **PHP 8.4/8.5 QA and no-dev verified; 14-rule scanner green; CodeQL alert reconciliation open** |
+| **08 — scoped dispatch and overhead** | STRUCT-HOT-01 (STRUCT-04/11/15, REQUEST-01), MEM-HOT-01 (MEM-01/07/09), PERF-COLD-01 (REQUEST-02) | Profile middleware/telemetry/extension availability, compiled tagged scope and matcher cold/warm boot. Optimize only demonstrated overhead, avoid caching request-scoped objects, add scope isolation parity tests. | P1 | **Open: profile scoped request path and candidate runtime bottlenecks before optimization** |
+| **09 — SAPI throughput** | PERF-SAPI-01 (PERF-01/03, OPS-01) | Address file c20, stream c5 and risk_allow c50 regressions; preserve file-range, cancellation, MIME, compression and output correctness. Re-run SAPI c1/c5/c20/c50 acceptance. | P0 | **BLOCKED: SAPI aggregate fails at 466e2c6; all SAPI load shards passed** |
+| **10 — Runwire throughput** | PERF-RUNWIRE-01 (PERF-01/03, OPS-01/05), DATA-01 (DATA-03/04/06) | Address dynamic/c20 and risk_allow/risk_clearance c50 regressions. Validate real Redis replay/timeout contracts, worker scope, H1/H2/H3, 30-min soak, tail latency and full Runwire load matrix. | P0 | **BLOCKED: Runwire aggregate fails at 466e2c6; H1/H2/H3 and 30-minute soak passed** |
+| **11 — operations + migration** | DOC-REL-01 (OPS-07/08/09), CONFIG-REPRO-01 (CONFIG-01/02), STRUCT-CLEAN-01 (STRUCT-13) | Publish 6.0.4→6.1 migration/rollback and production/OPcache guidance, validate executable examples, no-dev artifacts, optional integrations and justified structural candidates; no speculative massive refactor. | P1 | **Migration/rollback docs and dual-PHP no-dev archive verified by strict Sphinx and QA** |
+| **12 — exact-SHA signoff** | RELEASE-01 (FLOW-10, PERF-01/07, OPS-11) | Full PHPForge strict QA, static analysis, security, tests, Sphinx, package consumer, all certification shards AND both performance aggregations green at *same final head*; update final evidence and readiness disposition. | P0 | **BLOCKED: both runtime performance aggregates failed; Security & Standards green on 466e2c6** |
 
 ### Detailed batch acceptance and dependencies
 
@@ -218,4 +218,84 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 | 2026-11-20 | 05-QA-5 / 07-compat | `688661183329ac978606a83b10aa8c1e8e3d5d2c` | [Security & Standards run 44693385034](https://github.com/infocyph/Webrick/actions/runs/44693385034): all 832 Pest tests passed, but PHP 8.5 emitted a strict deprecation for static ReflectionProperty::setValue(value) with one argument; PHPStan, Psalm and Sphinx passed. | Use ReflectionProperty::setValue(null, value) for both test setup and cleanup; add second clean PHP 8.4 no-dev archive consumer to existing PHP 8.5 release job, preserving exact archive. QA retest pending. |
 | 2026-11-20 | QA signoff / final phase | `688661183329ac978606a83b10aa8c1e8e3d5d2c` | [Security & Standards run 44693779274](https://github.com/infocyph/Webrick/actions/runs/44693779274) **success**: PHP 8.4/8.5 prefer-lowest and prefer-stable, PHPStan, Psalm, Sphinx, clean install, and both no-dev archive consumers all green; [PR run 44693774231](https://github.com/infocyph/Webrick/actions/runs/44693774231) **success**. All 452 PR inline threads resolved; direct CodeQL alert query unavailable. | Resume full performance certification at new exact head. Keep 2% throughput, 15% p99 and 32 MiB RSS budgets, all response validation, H1/H2/H3 and soak. Known prior [44689911850](https://github.com/infocyph/Webrick/actions/runs/44689911850) both aggregators failed with shifted concurrency/workloads; use paired trial diagnostics to locate root cause. |
 
-**Tracker update rules:** Append a row for each batch commit; record check-run URLs and actual statuses (pass/fail/pending), relevant failure explanations, evidence SHA, and any regression rework. Preserve prior entries. A failed batch remains open until its applicable gates are demonstrably green.
+| 2026-11-20 | Verified CI audit (batches 00–12) | `466e2c674d6e48400084ae0679c80ff08eba75ae` | At code SHA `466e2c6`, [full benchmark Security & Standards 44694283765](https://github.com/infocyph/Webrick/actions/runs/44694283765) and [PR Security & Standards 44694294175](https://github.com/infocyph/Webrick/actions/runs/44694294175) succeeded, including PHPForge 8.4/8.5 benchmarks; [runtime 44694283456](https://github.com/infocyph/Webrick/actions/runs/44694283456) failed only its two SAPI/Runwire aggregate budget jobs. All protocol, load shard and 30-minute soak jobs succeeded. Per-commit runs and historical failures inventoried in ledger below. | Preserve historical cancelled/failed outcomes; mark batches 01/02/04/11 cumulatively green, 05/06 verified tests with conditional operational follow-up, 07 CodeQL alert-state unverified, 03/08/09/10/12 blocking. |
+
+**Tracker update rules:**
+
+### Verified batch CI ledger — 2026-11-20
+
+The **original-SHA** column is historical, not an assertion that every intermediate
+commit passed. Red/cancelled runs are preserved as failed/cancelled; later full
+QA on source SHA `688661183329ac978606a83b10aa8c1e8e3d5d2c` and on
+`466e2c674d6e48400084ae0679c80ff08eba75ae` provides **cumulative**
+verification of the corrected implementation. All QA is attributed to the
+specific SHA that actually ran it. A PR workflow success alone is not equivalent
+to a complete PHPForge or runtime release certificate.
+
+| Batch / correction | Source SHA | CI at source SHA | Verified disposition |
+|---|---|---|---|
+| 00 audit | `8bc3070` | [S&S 44688059453](https://github.com/infocyph/Webrick/actions/runs/44688059453) cancelled; [PR green](https://github.com/infocyph/Webrick/actions/runs/44688056608) | Superseded; audit/plan carried forward |
+| 01 request-limit docs | `3519010` | [S&S 44688259836](https://github.com/infocyph/Webrick/actions/runs/44688259836) cancelled; PR green | Verified later by strict Sphinx at 6886611/466e2c6 |
+| 02 entropy/logging | `c4e523b` | [S&S 44688388581](https://github.com/infocyph/Webrick/actions/runs/44688388581) **success** | Follow-up logger fixes in 79197e9, cumulatively green at 6886611/466e2c6 |
+| 03 analyzer diagnostics | `f06c022` | No GitHub Actions run found for exact SHA | Changes carried into 466e2c6; analyzer QA green, runtime attribution open |
+| 04 API compatibility | `b0e12b0` | [S&S 44689922032](https://github.com/infocyph/Webrick/actions/runs/44689922032) failed; [runtime 44689911850](https://github.com/infocyph/Webrick/actions/runs/44689911850) failed | Analyzer corrections later passed at ede022e; performance not resolved |
+| 04 QA recovery | `ede022e` | [S&S 44690727301](https://github.com/infocyph/Webrick/actions/runs/44690727301) **success** | PHPStan/Psalm and scoped skip-policy fingerprints corrected |
+| 05 pre-routing form bounds | `94e4931` | [S&S 44691191133](https://github.com/infocyph/Webrick/actions/runs/44691191133) cancelled | Follow-up source/test fixes carried forward, verified on 6886611/466e2c6 |
+| 06 artifact trust | `e9fbfde` | [S&S 44691396111](https://github.com/infocyph/Webrick/actions/runs/44691396111) cancelled | Tamper test correction carried forward, verified on 6886611/466e2c6 |
+| 05 complexity rework | `760ae23` | [S&S 44691496241](https://github.com/infocyph/Webrick/actions/runs/44691496241) failed | Reworked and verified in later green SHA |
+| 11 migration and Sphinx | `57fa623` | [S&S 44692026161](https://github.com/infocyph/Webrick/actions/runs/44692026161) cancelled | Strict Sphinx and both no-dev consumers verified at 6886611/466e2c6 |
+| 05 form integration test | `2195f24` | [S&S 44692468875](https://github.com/infocyph/Webrick/actions/runs/44692468875) failed | Test harness/Pint/Psalm feedback corrected in later batches |
+| 05 test harness rework | `43eb624` | [S&S 44692962130](https://github.com/infocyph/Webrick/actions/runs/44692962130) failed | Test expectation corrected; later QA green |
+| 02/07 logger and workflow | `79197e9` | [S&S 44693385034](https://github.com/infocyph/Webrick/actions/runs/44693385034) failed | Strict PHP 8.5 deprecation fixed on 6886611 |
+| 05/07 QA acceptance | `6886611` | [S&S 44693779274](https://github.com/infocyph/Webrick/actions/runs/44693779274) **success**; [PR 44693774231](https://github.com/infocyph/Webrick/actions/runs/44693774231) **success** | Four PHP 8.4/8.5 QA variants, dedicated Psalm/PHPStan, Sphinx and both no-dev archive consumers green |
+| Final acceptance gate | `466e2c6` | [S&S full 44694283765](https://github.com/infocyph/Webrick/actions/runs/44694283765) **success**; [S&S PR 44694294175](https://github.com/infocyph/Webrick/actions/runs/44694294175) **success**; [Runtime 44694283456](https://github.com/infocyph/Webrick/actions/runs/44694283456) **failure** | Both PHPForge benchmark jobs green, runtime protocol/soak green, **both performance budget aggregates red** |
+
+**Latest complete code SHA:**
+`466e2c674d6e48400084ae0679c80ff08eba75ae`
+([PR #59](https://github.com/infocyph/Webrick/pull/59)).
+At that exact SHA, [full Security & Standards 44694283765](https://github.com/infocyph/Webrick/actions/runs/44694283765)
+passed: PHP 8.4/8.5 dedicated Psalm and PHPStan analysis, all four QA matrix
+combinations, clean install, and PHPForge benchmarks on PHP 8.4 and 8.5.
+[PR Security & Standards 44694294175](https://github.com/infocyph/Webrick/actions/runs/44694294175)
+also passed strict Sphinx and two no-dev archive consumers (PHP 8.4 and
+8.5). [PR #59 dynamic run 44694291025](https://github.com/infocyph/Webrick/actions/runs/44694291025)
+passed. All 452 reviewed inline PR threads were resolved as observed during
+this verification, but CodeQL alert closure remains **unverified**, not
+implicitly green.
+
+**Latest runtime-release verdict:** [44694283456](https://github.com/infocyph/Webrick/actions/runs/44694283456)
+**failed** at the same exact SHA. All eight SAPI/Runwire load shards,
+Runwire HTTP/1–HTTP/3 protocol jobs and the 30-minute persistent-worker
+soak **passed**. Nevertheless, **both** aggregate load budget jobs failed,
+which is release-blocking. With acceptance budgets unchanged at maximum
+**2% throughput regression**, **15% p99 increase** and **32 MiB RSS increase**,
+the observed failures were:
+
+- **SAPI:** stream/c5 p99 **+19.54%**; file/c5 throughput **-7.53%** and
+  p99 **+53.08%**; range/c20 p99 **+24.85%**; risk_counter/c5 p99 **+17.88%**.
+- **Runwire:** throughput static/c5 **-3.11%**, dynamic/c5 **-2.61%**,
+  upload/c5 **-2.10%**, file/c5 **-11.72%**, range/c5 **-10.72%**,
+  risk_allow/c5 **-8.58%**, risk_allow/c50 **-5.35%**,
+  risk_clearance/c1 **-3.59%**; slow/c50 p99 **+29.86%**.
+
+The performance matrix compares against the 6.0.4 baseline using three
+trials. Moving failures between historical runs **does not** authorize
+repeated retries as a remedy, weaker tolerances, ignoring workload validation
+or release signoff. Profile and address reproducible causes; record
+paired-trial evidence and rerun both full aggregate gates on the final source
+SHA. Runtime certification artifacts: [SAPI evidence](https://github.com/infocyph/Webrick/actions/runs/44694283456/artifacts/14611437039)
+and [Runwire evidence](https://github.com/infocyph/Webrick/actions/runs/44694283456/artifacts/14611496481).
+
+**Open, not declared complete:** batch 03 attribution, batch 05
+host/abort/timeout edge cases beyond the verified bounded-form regression,
+batch 06 trusted deployment/activation race controls, batch 07
+independent CodeQL-alert reconciliation, batch 08 profiling, batch 09
+SAPI budgets, batch 10 Runwire budgets and batch 12 exact-SHA release
+acceptance. Batch 11 migration guidance and package verification have
+passed. No merge, release or tag is authorized.
+
+> This ledger verifies the code at source SHA `466e2c6`. If the present
+> tracker-only commit advances `feature/risk-admission`, that new commit
+> must not inherit an *exact-SHA* green claim; CI on the documentation-only
+> revision must be evaluated independently before final release approval.
+ Append a row for each batch commit; record check-run URLs and actual statuses (pass/fail/pending), relevant failure explanations, evidence SHA, and any regression rework. Preserve prior entries. A failed batch remains open until its applicable gates are demonstrably green.
