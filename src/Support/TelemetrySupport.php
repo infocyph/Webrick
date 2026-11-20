@@ -110,11 +110,7 @@ final class TelemetrySupport
             }
         }
 
-        try {
-            return bin2hex(random_bytes(16));
-        } catch (\Throwable) {
-            return str_replace('.', '', uniqid('', true));
-        }
+        return bin2hex(random_bytes(16));
     }
 
     /**
@@ -130,6 +126,10 @@ final class TelemetrySupport
         ?string $requestId,
         string $mode,
     ): void {
+        if ($log instanceof \Psr\Log\NullLogger) {
+            return;
+        }
+
         $clientIp = $req->getAttribute('client_ip');
         $remoteAddr = $req->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = \is_string($clientIp)
@@ -137,7 +137,7 @@ final class TelemetrySupport
             : (\is_string($remoteAddr) ? $remoteAddr : '-');
         $fromProxy = $req->getAttribute('is_trusted_proxy') === true ? 'proxy' : 'direct';
         $method = $req->getMethod();
-        $path = $req->getUri()->getPath() ?: '/';
+        $path = substr(str_replace(["\r", "\n"], ['\\r', '\\n'], $req->getUri()->getPath() ?: '/'), 0, 2048);
         $code = $resp->getStatusCode();
         $lenHeader = $resp->getHeaderLine('Content-Length');
         $len = $lenHeader !== '' ? $lenHeader : ($resp->getBody()->getSize() ?? '-');

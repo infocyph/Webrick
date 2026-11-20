@@ -108,20 +108,12 @@ final readonly class TelemetryMiddleware
 
     private static function generateSpanId(): string
     {
-        try {
-            return bin2hex(random_bytes(8));
-        } catch (\Throwable) {
-            return str_pad(substr(str_replace('.', '', uniqid('', true)), 0, 16), 16, '0');
-        }
+        return bin2hex(random_bytes(8));
     }
 
     private static function generateTraceId(): string
     {
-        try {
-            return bin2hex(random_bytes(16));
-        } catch (\Throwable) {
-            return str_pad(substr(str_replace('.', '', uniqid('', true)), 0, 32), 32, '0');
-        }
+        return bin2hex(random_bytes(16));
     }
 
     private static function isValidFlags(string $hex): bool
