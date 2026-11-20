@@ -12,6 +12,8 @@ CONCURRENCY="${8:-all}"
 RUNWIRE_TAIL_SECONDS="${9:-$DURATION_SECONDS}"
 
 source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-source-control.sh"
+load_select_admission_modes "$BASELINE_ROOT" "$CANDIDATE_ROOT"
 SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
 
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
@@ -28,6 +30,11 @@ fi
 
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
+if [[ "${CERT_AA_CONTROL:-0}" == 1 ]]; then
+    printf 'measurement=identical-source-aa\nsource_sha=%s\nbaseline_admission=%s\ncandidate_admission=%s\n' \
+        "$(git -C "$BASELINE_ROOT" rev-parse HEAD)" "$BASELINE_ADMISSION" "$CANDIDATE_ADMISSION" \
+        > "$RESULT_DIR/aa-identity.txt"
+fi
 RESULTS="$RESULT_DIR/load-results.jsonl"
 : > "$RESULTS"
 declare -A SERVER_PIDS=() SERVER_PORTS=() SERVER_EVENTS=() EVENT_EVIDENCE=()
@@ -160,9 +167,9 @@ start_server() {
     local version="$4"
     local trial="$5"
     local log="$RESULT_DIR/${version}-t${trial}-${mode}.log"
-    local admission=native
+    local admission="$BASELINE_ADMISSION"
     if [[ "$version" == candidate ]]; then
-        admission=middleware
+        admission="$CANDIDATE_ADMISSION"
     fi
 
     if [[ "$mode" == "sapi" ]]; then
@@ -469,8 +476,8 @@ run_mode_pair() {
     done
 }
 
-WEBRICK_CERT_ADMISSION=native php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
-WEBRICK_CERT_ADMISSION=middleware php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
+WEBRICK_CERT_ADMISSION="$BASELINE_ADMISSION" php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
+WEBRICK_CERT_ADMISSION="$CANDIDATE_ADMISSION" php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
 
 if [[ "$MODE" == "all" || "$MODE" == "sapi" ]]; then
     run_mode_pair sapi 18080 18081

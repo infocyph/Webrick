@@ -3,6 +3,13 @@ name: Runtime Release Certification
 # The Webrick 6.1 release candidate runs full performance certification only
 # after all non-performance QA passes. No budget or certification job is waived.
 on:
+  workflow_call:
+    inputs:
+      aa_control:
+        description: Run identical-source A/A diagnostics, never a release comparison
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - feature/runwire
@@ -58,7 +65,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.aa_control && 'aa' || 'release' }}
   cancel-in-progress: true
 
 defaults:
@@ -67,6 +74,7 @@ defaults:
 
 jobs:
   live-runwire-h1-h2:
+    if: ${{ !inputs.aa_control }}
     name: Live Runwire H1/H2
     needs: performance-dependencies
     runs-on: ubuntu-24.04
@@ -208,11 +216,11 @@ jobs:
           ref: ${{ github.sha }}
           path: candidate
 
-      - name: Check out trusted baseline
+      - name: Check out release baseline or identical-source A/A control
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ inputs.aa_control && github.sha || 'main' }}
           path: baseline
 
       - name: Pin prepared baseline revision
@@ -225,6 +233,9 @@ jobs:
           php-version: "8.5"
           coverage: none
           extensions: redis
+
+      - name: Verify A/A mode selection and source guards
+        run: bash candidate/.github/certification/test-load-source-control.sh
 
       - name: Capture the exact PHP runtime for all load shards
         run: |
@@ -272,6 +283,7 @@ jobs:
     env:
       CERT_MODE: ${{ matrix.mode }}
       CERT_CONCURRENCY: ${{ matrix.concurrency }}
+      CERT_AA_CONTROL: ${{ inputs.aa_control && '1' || '0' }}
       IC_REDIS_HOST: 127.0.0.1
       CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}
       CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
@@ -285,20 +297,20 @@ jobs:
           path: candidate
           fetch-depth: 0
 
-      - name: Check out baseline
+      - name: Check out release baseline or identical-source A/A control
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ inputs.aa_control && github.sha || 'main' }}
           path: baseline
           fetch-depth: 0
 
-      - name: Verify trusted main matches prepared dependencies
+      - name: Verify prepared baseline or A/A control matches shared dependencies
         env:
           PREPARED_BASELINE_SHA: ${{ needs.performance-dependencies.outputs.baseline_sha }}
         run: |
           if [[ "$(git -C baseline rev-parse HEAD)" != "$PREPARED_BASELINE_SHA" ]]; then
-            echo "Trusted main changed after dependency preparation; rerun with a consistent reference." >&2
+            echo "Reference changed after dependency preparation; rerun with a consistent source SHA." >&2
             exit 1
           fi
 
@@ -369,10 +381,20 @@ jobs:
           python3 candidate/.github/certification/test-merge-load-shards.py
 
       - name: Prepare explicitly corrected performance reference
+        if: ${{ !inputs.aa_control }}
         run: |
           bash candidate/.github/certification/prepare-baseline.sh "$PWD/baseline" "$PWD/cert-results"
 
-      - name: Verify cancellation regressions against the corrected reference
+      - name: Prove source-identical A/A baseline and candidate
+        if: ${{ inputs.aa_control }}
+        run: |
+          test "$(git -C baseline rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$GITHUB_SHA"
+          cmp baseline/composer.lock candidate/composer.lock
+          printf 'measurement=identical-source-aa\nadmission=middleware-both\nsource_sha=%s\n' "$GITHUB_SHA" \
+            | tee -a cert-results/environment.txt
+
+      - name: Verify cancellation regressions against measured reference
         working-directory: baseline
         run: |
           vendor/bin/pest --configuration=vendor/infocyph/phpforge/resources/pest.xml \
@@ -521,6 +543,7 @@ jobs:
           if-no-files-found: error
 
   persistent-worker-soak:
+    if: ${{ !inputs.aa_control }}
     name: Persistent Runwire worker soak
     needs: performance-dependencies
     runs-on: ubuntu-24.04
@@ -599,6 +622,7 @@ jobs:
           if-no-files-found: error
 
   live-runwire-h3:
+    if: ${{ !inputs.aa_control }}
     name: Live Runwire H3
     needs: performance-dependencies
     runs-on: ubuntu-26.04
