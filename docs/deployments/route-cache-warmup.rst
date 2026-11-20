@@ -123,7 +123,7 @@ Generate matcher cache into the release/staging location, validate it, then acti
 For ``sharded`` mode, the cache path is a directory and the returned artifact is its ``__manifest.php``. Fused/generated modes return the generated cache file path.
 
 Compiled artifact trust boundary
--------------------------------
+--------------------------------
 
 Compiled route and DI artifacts are executable PHP. Deploy them only from a
 trusted, immutable release directory owned by the deployment operator; runtime

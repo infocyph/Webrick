@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Infocyph\InterMix\DI\ContainerBuilder;
-use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseArtifactLoader;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
@@ -20,7 +19,6 @@ test('coordinated release detects tampered executable router bytes before requir
     $manifestPath = $directory . '/release.json';
     $marker = $directory . '/executed';
     $builder = ContainerBuilder::create('webrick.release.trust.' . bin2hex(random_bytes(4)));
-    $builder->input(Request::class);
 
     try {
         $manifest = new ReleaseCompiler()->compile(

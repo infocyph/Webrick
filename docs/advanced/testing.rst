@@ -42,6 +42,15 @@ native types only in an explicitly breaking release.
 Runtime release certification
 -----------------------------
 
+For the Webrick 6.1 ``feature/risk-admission`` development branch,
+the full load/soak workflow is deliberately deferred until final readiness:
+intermediate commits run Security & Standards, Sphinx and functional checks.
+After all non-performance work passes at the final SHA, invoke
+``Runtime Release Certification`` via GitHub Actions
+``workflow_dispatch`` on that exact branch and require every SAPI/Runwire
+performance aggregation and protocol/soak job to pass. Do not treat
+the deferral as a waived release gate or lower the budgets.
+
 The existing ``.github/certification/load-benchmark.sh`` harness measures ten
 ordinary workloads and six protected workloads: deterministic admission, Redis
 counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,

@@ -316,6 +316,11 @@ final readonly class CompiledRouterKernel
         }
     }
 
+    public function requiresHostRouting(): bool
+    {
+        return $this->artifact->hasDomainRoutes;
+    }
+
     /** @throws \InvalidArgumentException */
     private function earlyRuntimeResponse(RuntimeRequestContext $context): ?Response
     {
@@ -326,11 +331,6 @@ final readonly class CompiledRouterKernel
         return $this->preRoutingGate === null
             ? null
             : $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
-    }
-
-    public function requiresHostRouting(): bool
-    {
-        return $this->artifact->hasDomainRoutes;
     }
 
     /**
