@@ -27,6 +27,17 @@ final readonly class RuntimeTaggedMiddleware
             $middleware[] = $entry;
         }
 
+        if ($middleware === []) {
+            // No scoped descriptors were resolved. Avoid constructing a
+            // per-request resolver and an otherwise empty closure pipeline.
+            $response = $next($request);
+            if (!$response instanceof Response) {
+                throw new \UnexpectedValueException('Compiled middleware pipeline must return ' . Response::class . '.');
+            }
+
+            return $response;
+        }
+
         return new CompiledMiddlewarePipeline($middleware, $next, $this->runtime)->handle($request);
     }
 }

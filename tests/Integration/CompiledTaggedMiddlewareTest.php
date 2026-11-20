@@ -34,6 +34,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use UnexpectedValueException;
 use WeakReference;
 
 #[BackupStaticProperties(true)]
@@ -153,6 +154,26 @@ final class CompiledTaggedMiddlewareTest extends TestCase
             gc_collect_cycles();
             self::assertNull($reference->get());
         }
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    public function testEmptyTaggedPipelineStillRejectsInvalidTerminalResult(): void
+    {
+        [, $container] = $this->fixture(LifetimeEnum::Scoped, false);
+        $tagged = new \Infocyph\Webrick\Router\Dispatch\RuntimeTaggedMiddleware('pre', new InterMixRuntime($container));
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('Compiled middleware pipeline must return ');
+
+        $tagged(
+            Request::fake(uri: '/tag/invalid'),
+            static fn(Request $request): string => $request->getUri()->getPath(),
+        );
     }
 
     /**
