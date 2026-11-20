@@ -282,7 +282,10 @@ final readonly class CompiledRouterKernel
 
         try {
             try {
-                $response = $this->earlyRuntimeResponse($context);
+                $response = $context->preRoutingResponse;
+                if ($response === null && $this->preRoutingGate !== null) {
+                    $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
+                }
                 if ($response !== null) {
                     if ($context->routing->method === HttpMethodEnum::HEAD->value) {
                         $response = self::headResponse($response);
@@ -303,13 +306,7 @@ final readonly class CompiledRouterKernel
             } catch (RuntimeResponseWriteException $failure) {
                 throw $failure;
             } catch (Throwable $exception) {
-                $response = $this->renderException($exception, $request, $context);
-                $this->profiler?->mark('error_render');
-                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-                    $response = self::headResponse($response);
-                }
-
-                return $this->consumeRuntimeResponse($response, $responseConsumer);
+                return $this->consumeRuntimeFailure($exception, $request, $context, $responseConsumer);
             }
         } catch (RuntimeResponseWriteException $failure) {
             throw $failure->failure;
@@ -356,6 +353,25 @@ final readonly class CompiledRouterKernel
         }
 
         return $response->withBody('');
+    }
+
+    /**
+     * @param callable(Response):void|null $responseConsumer
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     */
+    private function consumeRuntimeFailure(
+        Throwable $exception,
+        ?Request $request,
+        RuntimeRequestContext $context,
+        ?callable $responseConsumer,
+    ): Response {
+        $response = $this->renderException($exception, $request, $context);
+        $this->profiler?->mark('error_render');
+        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+            $response = self::headResponse($response);
+        }
+
+        return $this->consumeRuntimeResponse($response, $responseConsumer);
     }
 
     /**
@@ -510,18 +526,6 @@ final readonly class CompiledRouterKernel
         }
 
         return $response;
-    }
-
-    /** @throws \InvalidArgumentException */
-    private function earlyRuntimeResponse(RuntimeRequestContext $context): ?Response
-    {
-        if ($context->preRoutingResponse !== null) {
-            return $context->preRoutingResponse;
-        }
-
-        return $this->preRoutingGate === null
-            ? null
-            : $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
     }
 
     private function evaluatePreRoutingGate(

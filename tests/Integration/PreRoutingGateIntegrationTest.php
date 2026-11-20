@@ -153,6 +153,39 @@ final class PreRoutingGateIntegrationTest extends TestCase
     }
 
     /**
+     * @throws \Throwable
+     */
+    public function testPreRoutingHeadRejectionOverridesGateWithoutRequestMaterialization(): void
+    {
+        $state = new MemoryMaintenanceState();
+        $state->enable('Deploying');
+        [$kernel, $paths] = self::kernel($state);
+        $materializations = 0;
+
+        try {
+            $context = new RuntimeRequestContext(
+                new RoutingInput('HEAD', '/known'),
+                static function () use (&$materializations): Request {
+                    ++$materializations;
+
+                    return Request::fake(method: 'HEAD', uri: '/known');
+                },
+                new RuntimeCapabilities('test', persistent: true, concurrent: true),
+                preRoutingResponse: Response::plaintext('too-large', 413),
+            );
+
+            $response = $kernel->handleRuntime($context);
+
+            self::assertSame(413, $response->getStatusCode());
+            self::assertSame('', (string) $response->getBody());
+            self::assertSame('9', $response->getHeaderLine('Content-Length'));
+            self::assertSame(0, $materializations);
+        } finally {
+            self::cleanup($paths);
+        }
+    }
+
+    /**
      * @param list<string> $bypassPaths
      * @return array{0:CompiledRouterKernel,1:list<string>}
      * @throws \InvalidArgumentException
