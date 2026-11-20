@@ -119,6 +119,7 @@ describe('Response', function () {
     it('preserves callable scalar stream producer coercion from 6.0', function () {
         $integer = Response::stream(static fn(): int => 42)->getProducer();
         $stringable = Response::stream(static fn(): \Stringable => new class implements \Stringable {
+            #[\Override]
             public function __toString(): string
             {
                 return 'from-stringable';

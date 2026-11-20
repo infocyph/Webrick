@@ -1,10 +1,11 @@
 name: Runtime Release Certification
 
+# The Webrick 6.1 release candidate runs full performance certification only
+# after all non-performance QA passes. No budget or certification job is waived.
 on:
   push:
     branches:
       - feature/runwire
-      - feature/risk-admission
   workflow_dispatch:
     inputs:
       duration_seconds:

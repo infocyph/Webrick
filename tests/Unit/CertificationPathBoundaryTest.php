@@ -118,7 +118,7 @@ test('load analysis writes local diagnostics while rejecting incomplete evidence
 
 /**
  * Independent complete evidence fixture: ordinary routes alone must never certify admission.
- * @return list<array{workload:string,...}>
+ * @return list<array{workload:string,version:string,concurrency:int,trial:int,...}>
  */
 function certificationCompleteLoadRows(): array
 {
@@ -245,8 +245,11 @@ test('load analyzer preserves paired trial evidence without weakening budget rej
                 break;
             }
         }
-        $baselineSamples = is_array($comparison) ? ($comparison['baseline_samples'] ?? null) : null;
-        $candidateSamples = is_array($comparison) ? ($comparison['candidate_samples'] ?? null) : null;
+        if (!is_array($comparison)) {
+            throw new UnexpectedValueException('Expected the dynamic c20 performance comparison.');
+        }
+        $baselineSamples = $comparison['baseline_samples'] ?? null;
+        $candidateSamples = $comparison['candidate_samples'] ?? null;
         if (!is_array($baselineSamples) || !is_array($candidateSamples)
             || !is_array($baselineSamples[0] ?? null)
             || !is_array($baselineSamples[1] ?? null)
