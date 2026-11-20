@@ -378,6 +378,28 @@ test('runwire streaming preserves scalar callback output but rejects non-string 
         ->toThrow(UnexpectedValueException::class, 'must yield strings');
 });
 
+
+test('runwire request form reads are bounded without losing accepted bytes', function (): void {
+    $token = RunwireRequestContext::standalone()->cancellation;
+    $accepted = new RunwireAdapterBodyFixture('name=abc');
+    $acceptedStream = new \Infocyph\Webrick\Runtime\Http\RunwireRequestBodyStream($accepted, $token);
+
+    expect($acceptedStream->getContentsUpTo(8))->toBe('name=abc')
+        ->and($accepted->readCalls)->toBe(1);
+
+    $rejected = new RunwireAdapterBodyFixture(str_repeat('a', 20));
+    $rejectedStream = new \Infocyph\Webrick\Runtime\Http\RunwireRequestBodyStream($rejected, $token);
+    expect($rejectedStream->getContentsUpTo(8))->toBeNull()
+        ->and($rejected->readCalls)->toBe(0)
+        ->and(fn() => $rejectedStream->getContentsUpTo(0))
+        ->toThrow(InvalidArgumentException::class);
+});
+
+test('runwire adapter rejects nonpositive early routing form budgets', function (): void {
+    expect(fn() => new RunwireRuntimeAdapter(maxRoutingFormBytes: 0))
+        ->toThrow(InvalidArgumentException::class);
+});
+
 test('runwire adapter detects transport pressure instead of overrunning the writer', function (): void {
     $adapter = new RunwireRuntimeAdapter();
     $writer = new RunwireAdapterWriterFixture();

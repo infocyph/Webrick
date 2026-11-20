@@ -113,6 +113,45 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+
+    /**
+     * @throws \Throwable
+     */
+    public function testPreRoutingRejectionShortCircuitsTheGateWithoutRequestMaterialization(): void
+    {
+        $state = new MemoryMaintenanceState();
+        $state->enable('Deploying');
+        [$kernel, $paths] = self::kernel($state);
+        $materializations = 0;
+        $written = null;
+
+        try {
+            $context = new RuntimeRequestContext(
+                new RoutingInput('POST', '/known'),
+                static function () use (&$materializations): Request {
+                    ++$materializations;
+
+                    return Request::fake(method: 'POST', uri: '/known');
+                },
+                new RuntimeCapabilities('test', persistent: true, concurrent: true),
+                preRoutingResponse: Response::json(['error' => 'payload_too_large'], 413),
+            );
+
+            $response = $kernel->handleRuntime(
+                $context,
+                static function (Response $current) use (&$written): void {
+                    $written = $current;
+                },
+            );
+
+            self::assertSame(413, $response->getStatusCode());
+            self::assertSame($response, $written);
+            self::assertSame(0, $materializations);
+        } finally {
+            self::cleanup($paths);
+        }
+    }
+
     /**
      * @param list<string> $bypassPaths
      * @return array{0:CompiledRouterKernel,1:list<string>}

@@ -282,6 +282,12 @@ final readonly class CompiledRouterKernel
 
         try {
             try {
+                if ($context->preRoutingResponse !== null) {
+                    $this->profiler?->mark('response_ready');
+
+                    return $this->consumeRuntimeResponse($context->preRoutingResponse, $responseConsumer);
+                }
+
                 if ($this->preRoutingGate !== null) {
                     $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
                     if ($response !== null) {

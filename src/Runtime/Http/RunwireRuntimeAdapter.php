@@ -41,7 +41,11 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         ?callable $scopeContext = null,
         bool $transportCompression = false,
         bool $transportRequestLimits = true,
+        private int $maxRoutingFormBytes = 8_388_608,
     ) {
+        if ($maxRoutingFormBytes <= 0) {
+            throw new \InvalidArgumentException('maxRoutingFormBytes must be positive.');
+        }
         $this->binding = new RunwireRuntimeBinding(
             $runtimeContext,
             $interMix,
@@ -88,12 +92,16 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         $formResolved = false;
         $form = [];
         $rawForm = null;
+        $preRoutingResponse = null;
+        $maxRoutingFormBytes = $this->maxRoutingFormBytes;
         $resolveRoutingForm = static function () use (
             $nativeRequest,
             $bodyStream,
+            $maxRoutingFormBytes,
             &$formResolved,
             &$form,
             &$rawForm,
+            &$preRoutingResponse,
         ): array {
             $contentType = $nativeRequest->headers->first('content-type') ?? '';
             if (HttpUtils::baseMediaType($contentType) !== MediaTypeEnum::FORM_URLENCODED->base()) {
@@ -102,7 +110,16 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             if ($formResolved) {
                 return $form;
             }
-            $rawForm = $bodyStream->getContents();
+            $rawForm = $bodyStream->getContentsUpTo($maxRoutingFormBytes);
+            if ($rawForm === null) {
+                $preRoutingResponse = Response::json(
+                    ['error' => 'payload_too_large'],
+                    413,
+                    ['Cache-Control' => 'no-store'],
+                );
+
+                return [];
+            }
             parse_str($rawForm, $parsed);
             $form = self::stringMap($parsed);
             $formResolved = true;
@@ -132,6 +149,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             $nativeResponse,
             $execution,
             $scopeBridge,
+            $preRoutingResponse,
         );
     }
 

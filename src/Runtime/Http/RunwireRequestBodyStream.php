@@ -67,6 +67,42 @@ final class RunwireRequestBodyStream implements BodyStream
         return $contents;
     }
 
+    /**
+     * Read a request body up to a strict memory ceiling. Null means the
+     * transport supplied more bytes than allowed; the caller must reject
+     * the request rather than continue with a partially parsed form.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
+     */
+    public function getContentsUpTo(int $maxBytes): ?string
+    {
+        if ($maxBytes <= 0) {
+            throw new \InvalidArgumentException('Maximum request-body bytes must be positive.');
+        }
+
+        $this->assertOpen();
+        $knownSize = $this->getSize();
+        if ($knownSize !== null && $knownSize > $maxBytes) {
+            return null;
+        }
+
+        $contents = '';
+        while (!$this->eof()) {
+            $remaining = $maxBytes - strlen($contents);
+            $chunk = $this->read(min(65_536, $remaining > 0 ? $remaining : 1));
+            $contents .= $chunk;
+            if (strlen($contents) > $maxBytes) {
+                return null;
+            }
+        }
+
+        return $contents;
+    }
+
     #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
