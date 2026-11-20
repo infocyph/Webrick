@@ -358,6 +358,9 @@ final readonly class CompiledRouterKernel
     /**
      * @param callable(Response):void|null $responseConsumer
      * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function consumeRuntimeFailure(
         Throwable $exception,

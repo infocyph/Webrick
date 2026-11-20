@@ -239,6 +239,8 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | 2026-11-20 | 08/09/10 hot-path follow-up | See commit introducing this row | [Runtime certification 44748314007](https://github.com/infocyph/Webrick/actions/runs/44748314007) failed both aggregates despite green H1/H2/H3/soak and load-shard checks; SAPI file/c20 throughput -7.38%, p99 +61.35%; Runwire stream/c1 p99 +36.98%. Trial-level data varied widely between paired samples; do not attribute every breach to one function or weaken 2%/15%/32-MiB budgets. Baseline `main` skips pre-gate work when no gate; candidate added mandatory `earlyRuntimeResponse()` call for every request. Local PHP 8.4 microbenchmark comparing equivalent no-gate branches estimated ~74–76 ns versus ~63–67 ns per invocation (NOT full-stack throughput evidence). | Eliminate extra per-request gate helper call, preserve pre-routing 413 precedence and maintenance gate semantics; move rare exception rendering out of hot path to retain PHPForge complexity budget. Add HEAD + 413 + no-materialization regression test. Full SAPI/Runwire verification required before performance claims. |
 
+| 2026-11-20 | 08/09/10 QA correction | See GitHub commit at this tracker line | [Security & Standards 44754720082](https://github.com/infocyph/Webrick/actions/runs/44754720082) PHP 8.4 Psalm failed four MissingThrowsDocblock annotations on new consumeRuntimeFailure; PHPStan passed. | Add exact InvalidArgumentException, RuntimeException and UnexpectedValueException throws contracts to the rare-path helper; no suppression, benchmark threshold or runtime semantics changed. Pending exact-SHA CI. |
+
 **Tracker update rules:**
 
 ### Verified batch CI ledger — 2026-11-20
