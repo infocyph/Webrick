@@ -320,3 +320,20 @@ passed. No merge, release or tag is authorized.
 > must not inherit an *exact-SHA* green claim; CI on the documentation-only
 > revision must be evaluated independently before final release approval.
  Append a row for each batch commit; record check-run URLs and actual statuses (pass/fail/pending), relevant failure explanations, evidence SHA, and any regression rework. Preserve prior entries. A failed batch remains open until its applicable gates are demonstrably green.
+
+### CI trigger deduplication and runtime failure evidence — 2026-11-20
+
+**Batch CI-FLOW (workflow-only; pending new-commit QA):** The branch `feature/risk-admission` was mistakenly listed under both the Security & Standards push trigger and the PR targeting `main`. This launched two overlapping PHPForge/static QA runs per source SHA (the push run additionally did PHPForge benchmarks; the PR run additionally did strict Sphinx and no-dev archive checks). The Security & Standards **push branch list is now restricted to `main` and `master`**, while tag pushes, Sunday schedule, workflow_dispatch, and PR events are preserved. PR QA is the single routine feature-branch QA path; release-specific full PHPForge benchmarks can still be requested via workflow_dispatch.
+
+Runtime Release Certification on `feature/runwire` / `feature/risk-admission` continues to run for **runtime-relevant source, tests, Composer, and certification harness changes**. Docs-only, tracker-only, and unrelated CI changes no longer spend 30+ minutes on automatically launched certification. workflow_dispatch with all original durations, trials, security/protocol gates and **unchanged** throughput (2%), p99 (15%) and RSS (32 MiB) limits remains available for final exact-SHA signoff. Any final-SHA workflow dispatch is required even if an earlier source-only push passed; a skipped runtime run on a documentation-only SHA is not a green release certificate.
+
+**Latest pre-change exact SHA:** `b42ab48d207b19bc6e91c11e0b38f3aca1bac42c`.
+[PR Security & Standards 44755185458](https://github.com/infocyph/Webrick/actions/runs/44755185458) and
+[push Security & Standards 44755175694](https://github.com/infocyph/Webrick/actions/runs/44755175694) both **passed** PHP 8.4/8.5 static QA at that SHA. All 454 PR inline review threads were marked resolved; code-scanning alert closure remains unverified.
+
+[Runtime Release Certification 44755175833](https://github.com/infocyph/Webrick/actions/runs/44755175833) **failed** after all eight shard jobs, H1/H2, H3 and the 30-minute worker soak **passed**. Both aggregate budgets remain **RED** with 384 validated rows in each runtime:
+- SAPI: `upload/c5` throughput **−4.50%**, p99 **+43.02%**; `upload/c50` p99 **+15.82%**.
+- Runwire: 16 budget breaches, including `range/c50` throughput **−8.33%**, `not_found/c20` p99 **+50.35%**, `risk_provider_slow/c50` p99 **+45.60%**. Full official failure list: aggregate jobs #136368329254 and #136368329335.
+- Compared with earlier full runs #44694283456 and #44748314007, the failure distribution changes materially. This does **not** prove failures are noise; a source-identical A/A control, CPU/runtime evidence, and attribution are needed before production optimization or final acceptance.
+
+**Still open:** Batch 03 profiling/reproducibility, 08 measured benefit, 09 SAPI full aggregate, 10 Runwire full aggregate, 07 external security alert reconciliation, and 12 final exact-SHA acceptance. This CI cleanup does not declare any performance regression fixed and is **not** release signoff. PR #59 stays draft, unmerged and untagged.
