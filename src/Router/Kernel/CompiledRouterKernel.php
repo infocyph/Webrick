@@ -321,18 +321,6 @@ final readonly class CompiledRouterKernel
         return $this->artifact->hasDomainRoutes;
     }
 
-    /** @throws \InvalidArgumentException */
-    private function earlyRuntimeResponse(RuntimeRequestContext $context): ?Response
-    {
-        if ($context->preRoutingResponse !== null) {
-            return $context->preRoutingResponse;
-        }
-
-        return $this->preRoutingGate === null
-            ? null
-            : $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
-    }
-
     /**
      * @param list<string> $allowed
      * @throws \InvalidArgumentException
@@ -522,6 +510,18 @@ final readonly class CompiledRouterKernel
         }
 
         return $response;
+    }
+
+    /** @throws \InvalidArgumentException */
+    private function earlyRuntimeResponse(RuntimeRequestContext $context): ?Response
+    {
+        if ($context->preRoutingResponse !== null) {
+            return $context->preRoutingResponse;
+        }
+
+        return $this->preRoutingGate === null
+            ? null
+            : $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
     }
 
     private function evaluatePreRoutingGate(

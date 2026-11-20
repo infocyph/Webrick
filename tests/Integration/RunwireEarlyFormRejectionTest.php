@@ -1,0 +1,84 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Integration;
+
+use Infocyph\Runwire\Http\Enum\ProtocolVersion;
+use Infocyph\Runwire\Http\Headers;
+use Infocyph\Runwire\Http\HttpRequest;
+use Infocyph\Runwire\Http\Internal\BufferedRequestBody;
+use Infocyph\Runwire\Http\Internal\CallbackResponseWriter;
+use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use UnexpectedValueException;
+
+final class RunwireEarlyFormRejectionTest extends TestCase
+{
+    /** @throws \Throwable */
+    #[RunInSeparateProcess]
+    public function testFormOverrideRejectsOversizeBeforeRoutingAndAcceptsBoundedForms(): void
+    {
+        Request::setMethodParamOverride(true);
+        $body = new BufferedRequestBody('_method=PUT&name=abc');
+        $request = new HttpRequest(
+            'POST',
+            '/forms',
+            ProtocolVersion::HTTP_1_1,
+            Headers::fromArray(['Content-Type' => 'application/x-www-form-urlencoded']),
+            $body,
+        );
+        $status = null;
+        $parts = [];
+        $writer = new CallbackResponseWriter(
+            static function (int $code, Headers $headers) use (&$status): void {
+                $status = $code;
+            },
+            static function (string $chunk) use (&$parts): void {
+                $parts[] = $chunk;
+            },
+            static function (): void {},
+            maxBodyBytes: 4096,
+        );
+
+        $adapter = new RunwireRuntimeAdapter(maxRoutingFormBytes: 8);
+        $rejected = $adapter->context($request, $writer);
+        $rejection = $rejected->preRoutingResponse;
+        if (!$rejection instanceof Response) {
+            throw new UnexpectedValueException('Oversized routing form was not rejected.');
+        }
+        $adapter->write($rejection, $rejected);
+
+        self::assertSame('POST', $rejected->routing->method);
+        self::assertSame(413, $rejection->getStatusCode());
+        self::assertSame(413, $status);
+        self::assertTrue($writer->isEnded());
+        self::assertStringContainsString('payload_too_large', implode('', $parts));
+        self::assertSame(strlen('_method=PUT&name=abc'), $body->bufferedBytes());
+
+        $acceptedBody = new BufferedRequestBody('_method=PUT');
+        $acceptedRequest = new HttpRequest(
+            'POST',
+            '/forms',
+            ProtocolVersion::HTTP_1_1,
+            Headers::fromArray(['Content-Type' => 'application/x-www-form-urlencoded']),
+            $acceptedBody,
+        );
+        $unusedWriter = new CallbackResponseWriter(
+            static function (int $code, Headers $headers): void {},
+            static function (string $chunk): void {},
+            static function (): void {},
+            maxBodyBytes: 4096,
+        );
+        $accepted = new RunwireRuntimeAdapter(maxRoutingFormBytes: 64)
+            ->context($acceptedRequest, $unusedWriter);
+
+        self::assertNull($accepted->preRoutingResponse);
+        self::assertSame('PUT', $accepted->routing->method);
+        self::assertSame('PUT', $accepted->request()->getMethod());
+        self::assertSame('PUT', $accepted->request()->post('_method'));
+    }
+}
