@@ -44,6 +44,36 @@ test('coordinated release detects tampered executable router bytes before requir
             ->and($webrickHash)->toBeString()
             ->and($webrickHash)->toBe(hash_file('sha256', $routerPath));
 
+        // A stale manifest must reject a switched InterMix active symlink
+        // before either executable artifact can be required.
+        $originalTarget = readlink($intermixPath);
+        if (!is_string($originalTarget)) {
+            throw new RuntimeException('Compiled InterMix active symlink is missing.');
+        }
+        $replacement = $directory . '/swapped-intermix.php';
+        $maliciousIntermix = '<?php file_put_contents(' . var_export($marker, true) . ', "executed"); return [];';
+        if (file_put_contents($replacement, $maliciousIntermix) === false || !unlink($intermixPath)
+            || !symlink($replacement, $intermixPath)) {
+            throw new RuntimeException('Unable to stage switched InterMix fixture.');
+        }
+
+        try {
+            expect(fn() => new ReleaseArtifactLoader()->load(
+                $builder,
+                $manifestPath,
+                'production',
+                'coordinated-release-trust',
+            ))->toThrow(RuntimeException::class, 'InterMix release artifact digest mismatch');
+            expect(is_file($marker))->toBeFalse();
+        } finally {
+            if (is_link($intermixPath) && !unlink($intermixPath)) {
+                throw new RuntimeException('Unable to remove swapped InterMix fixture.');
+            }
+            if (!symlink($originalTarget, $intermixPath)) {
+                throw new RuntimeException('Unable to restore compiled InterMix fixture.');
+            }
+        }
+
         // Even rehashing the less-trusted sidecar cannot bypass manifest SHA-256.
         $modified = '<?php file_put_contents(' . var_export($marker, true) . ', "executed"); return [];';
         if (file_put_contents($routerPath, $modified) === false) {
