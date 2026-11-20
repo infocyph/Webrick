@@ -34,8 +34,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\ExcludeStaticPropertyFromBackup;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
-use ReflectionClass;
-use UnexpectedValueException;
 use WeakReference;
 
 #[BackupStaticProperties(true)]
@@ -162,26 +160,23 @@ final class CompiledTaggedMiddlewareTest extends TestCase
      * @throws \LogicException
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
-     * @throws \ReflectionException
      */
-    public function testEmptyTaggedPipelineStillRejectsInvalidTerminalResult(): void
+    public function testEmptyTaggedPipelineReleasesEachRequestAfterDispatch(): void
     {
-        [, $container] = $this->fixture(LifetimeEnum::Scoped, false);
-        // Reflect the internal implementation without exposing it as public API.
-        $type = new ReflectionClass('Infocyph\\Webrick\\Router\\Dispatch\\RuntimeTaggedMiddleware');
-        $tagged = $type->newInstanceArgs(['pre', new InterMixRuntime($container)]);
+        [$kernel] = $this->fixture(LifetimeEnum::Scoped, false);
 
-        try {
-            $type->getMethod('__invoke')->invokeArgs($tagged, [
-                Request::fake(uri: '/tag/invalid'),
-                static fn(Request $request): string => $request->getUri()->getPath(),
-            ]);
-            self::fail('Empty tagged middleware returned an invalid terminal result.');
-        } catch (UnexpectedValueException $exception) {
+        foreach (['one', 'two'] as $id) {
+            $request = Request::fake(uri: '/tag/' . $id);
+            $reference = WeakReference::create($request);
+            $response = $kernel->handle($request);
+            self::assertSame(200, $response->getStatusCode());
             self::assertSame(
-                'Compiled middleware pipeline must return ' . Response::class . '.',
-                $exception->getMessage(),
+                'explicit-pre[route[explicit-post[/tag/' . $id . ']]]',
+                (string) $response->getBody(),
             );
+            unset($request, $response);
+            gc_collect_cycles();
+            self::assertNull($reference->get());
         }
     }
 

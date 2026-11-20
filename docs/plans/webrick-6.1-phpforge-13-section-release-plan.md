@@ -235,6 +235,8 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 
 | 2026-11-20 | 08 QA correction | See commit for this tracker entry | [S&S 44747370462](https://github.com/infocyph/Webrick/actions/runs/44747370462) static Psalm flagged direct new of internal RuntimeTaggedMiddleware (InternalClass/InternalMethod) and deprecated PHPUnit expectExceptionMessage; phpstan had no issues. | Test now invokes internal object through ReflectionClass (as existing project internal tests do), and checks explicit exception message without deprecated PHPUnit API. No production source changed or QA rules suppressed. |
 
+| 2026-11-20 | 08 QA public API correction | See commit for this tracker entry | [S&S 44747839476](https://github.com/infocyph/Webrick/actions/runs/44747839476) rejected ReflectionClass on an @internal runtime class despite source analysis otherwise passing. | Replaced the reflection test with a public CompiledRouterKernel empty-tag test validating exact response body and WeakReference request release across two requests. All scope/response invariants preserved; no suppression or production source change. |
+
 **Tracker update rules:**
 
 ### Verified batch CI ledger — 2026-11-20
