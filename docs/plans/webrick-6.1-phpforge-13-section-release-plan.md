@@ -193,6 +193,68 @@ This plan supersedes only the original audit's "read-only" execution state, not 
 - **09–10** remain independently blocking until *both* SAPI and Runwire pass; a rerun that merely masks a deterministic regression is not a fix.
 - **11–12** finalize migration evidence, security disposition, PHP 8.4/8.5 and exact final head checks; leave PR unmerged and untagged.
 
+### Final performance and release-readiness batches (P1–P4)
+
+**Purpose:** Close the outstanding audit Batches 03, 07–10 and 12 through evidence-backed, ordered changes. This register is the actionable continuation of the original 13-section audit and the historical batch tracker. Do not erase or reinterpret historical QA evidence. All dates, source SHAs and run outcomes below are snapshots; review the live checks before updating status.
+
+**Baseline and acceptance:** Webrick 6.0.4 trusted `main` with its documented, strictly pinned Runwire cancellation correction versus the Webrick 6.1 release candidate. Normal certification accepts at most **2% regression in successful RPM**, **15% increase in p99**, and **32 MiB increase in RSS** per workload/concurrency cell. Do not relax thresholds, modify fixtures to hide failures, drop result rows, turn off negative/correctness checks or pass a release by repeated lucky reruns. A/A is diagnostic only; it must not substitute for A/B release certification.
+
+| Batch | Scope and predecessor | Current state | Required gate |
+| --- | --- | --- | --- |
+| **P1 — Measurement reliability** | Original 03; precedes P2 optimization | **Implementation committed** `b36c725`; source-identity preflight and [Security & Standards #44767415631](https://github.com/infocyph/Webrick/actions/runs/44767415631) green; [A/A #44767401254](https://github.com/infocyph/Webrick/actions/runs/44767401254) **running** at last verification | Valid and interpretable identical-source results, provenance and variance report; diagnostic reproducibility verdict explicitly recorded |
+| **P2 — Profile and fix measured regressions** | Original 08, 09 and 10; depends on P1 interpretation | **NOT STARTED**; historical SAPI and Runwire budgets red | Profiler-backed changes with behavior tests; both full SAPI and Runwire aggregates pass on measured candidate SHA |
+| **P3 — Release gate and security reconciliation** | Original 07 plus CI consistency; parallel investigation possible, closure after P2 | **PARTIAL**: duplicate push/PR QA removed in `24dbd0e`, [PR QA #44767415631](https://github.com/infocyph/Webrick/actions/runs/44767415631) **success**; security-alert state unverified | Gate and branch-protection check plus all security exception/alert dispositions with evidence |
+| **P4 — Final exact-SHA release acceptance** | Original 12; depends on P1–P3 | **BLOCKED** by unverified A/A and red historical release performance | Every required release, package, static, security, protocol, soak and performance check green at final source SHA; no merging/tagging |
+
+#### P1 — Reproducibility and control
+
+- [x] **P1.1 Implement an identical-source A/A mode** using two distinct checkouts of the same commit, identical Composer lock and runtime dependencies, identical middleware admission configuration and unchanged production response validation. Implemented by `b36c725` using `http-aa-control.yml`, `load-source-control.sh`, `test-load-source-control.sh` and the existing certification workflow.
+- [x] **P1.2 Verify fail-closed setup tests** for different source SHAs, modified tracked source, different lock, invalid mode and identical checkout paths. Shared dependency/preflight job passed in [A/A #44767401254](https://github.com/infocyph/Webrick/actions/runs/44767401254); this proves harness initialization only.
+- [ ] **P1.3 Evaluate both A/A aggregate jobs**, all eight shards and the original complete response-validation/negative-evidence matrix; capture per-trial baseline/candidate RPM, p99, RSS, variability, CPU role allocation, PHP/extension versions and sample order from the actual artifacts. Record the exact run, SHA and offending cells. A/A controls may fail the strict budgets without falsifying the release result.
+- [ ] **P1.4 Decide and document reproducibility:** if source-identical A/A repeatedly exceeds limits, investigate runner/CPU isolation, workload ordering, 10-second trial length and other environment effects before claiming a production regression. If A/A is reasonably stable, profile A/B. Any changed measurement methodology needs its own explicit rationale and equivalence/negative-control tests; **never** silently alter release acceptance budgets.
+- [ ] **P1 acceptance:** Include a reproducibility verdict and links to the full A/A artifact/aggregate evidence. A green setup or a single accidental A/A pass is insufficient; retain baseline-to-candidate performance as independently release-blocking until verified.
+
+**P1 source references:** `.github/workflows/http-aa-control.yml`, `.github/workflows/runtime-release-certification.yml`, `.github/certification/{load-benchmark.sh,load-source-control.sh,test-load-source-control.sh,analyze-load.php,merge-load-shards.py}`.
+
+#### P2 — Profile and correct real throughput and latency losses
+
+- [ ] **P2.1 Capture controlled A/B comparisons** against the pinned 6.0.4 reference, including all 16 workloads and c1/c5/c20/c50, three or more comparable paired trials, source/runtime provenance and correctness gates. Prefer data from [normal certification #44767401000](https://github.com/infocyph/Webrick/actions/runs/44767401000) when complete; earlier [#44755175833](https://github.com/infocyph/Webrick/actions/runs/44755175833) failed both aggregates.
+- [ ] **P2.2 Attribute SAPI losses** using measured profiles of upload and request-body materialization, file/range streaming, emitted bytes, request/response creation, PHP-FPM/NGINX buffering and middleware invocation. Historical worst cells include `upload/c5` throughput **−4.50%**, p99 **+43.02%**, and `file/c20` throughput **−7.38%**, p99 **+61.35%** on different SHAs; do not presume a shared cause.
+- [ ] **P2.3 Attribute Runwire losses** under persistent workers: compiled route dispatch, scoped/tagged middleware, request promotion, response-writing/backpressure, Redis/risk decision path and event-loop scheduling. Keep cancellation, fiber scope, HTTP/1–3, request limits and replay semantics unchanged. Historical worst cells vary between certification runs.
+- [ ] **P2.4 Implement only independently justified hot-path fixes**, each as one coherent code+test+tracker commit. Use PHPForge engineering principles. Preserve optional extension behavior, public named arguments, error behavior and scoped DI lifetime. Regression tests must cover the fixed issue; no speculative broad refactor.
+- [ ] **P2.5 Verify full SAPI and Runwire aggregates** with unchanged 2%/15%/32-MiB budgets, correct response accounting and all workloads. A passing load shard is **not** a passing aggregate. If P2 cannot pass after credible profiling, leave P2 RED and document the limiting evidence rather than granting an exception.
+- [ ] **P2 acceptance:** Demonstrated measured improvement or defensible stability across reproductions, **both** aggregates green on the relevant source SHA, and tests green. Link exact commits and jobs.
+
+**P2 sources:** `src/Router/Kernel/CompiledRouterKernel.php`, `src/Router/Dispatch/{RuntimeDispatcher,CompiledMiddlewarePipeline,RuntimeTaggedMiddleware}.php`, `src/Runtime/Http/{SapiRuntimeAdapter,RunwireRuntimeAdapter}.php`, `src/Response/Body/FileBody.php` and the certified workload handlers.
+
+#### P3 — Gate correctness, provenance and security closure
+
+- [x] **P3.1 Remove redundant feature-branch QA:** Security & Standards runs on the PR; branch push runs remain for `main`/`master`, tags, schedule and manually triggered cases. Commit `24dbd0e`; [PR QA #44767415631](https://github.com/infocyph/Webrick/actions/runs/44767415631) succeeded on `b36c725`.
+- [ ] **P3.2 Verify required-check configuration and paths:** code-relevant changes start normal runtime certification, A/A is explicitly diagnostic, documentation-only updates do not claim release certification, and the final exact-SHA manual workflow remains mandatory. Review branch protections/required checks where permissions allow; note any unavailable policy evidence.
+- [ ] **P3.3 Reconcile PHPForge security exceptions, Psalm taints and third-party scanning alerts** against source/test coverage. GitHub CodeQL itself does not support PHP; resolved inline review threads do not establish that third-party code-scanning findings are closed. Obtain actual alert disposition or state the remaining externally unverifiable blocker.
+- [ ] **P3.4 Re-run full PHP 8.4/8.5 PHPForge QA**, strict Psalm/PHPStan, deprecations, security, Sphinx, archive and no-dev consumers after any P2 code change; record exact SHA and check URLs.
+- [ ] **P3 acceptance:** Single authoritative normal QA path, documented required-release gate, independently reconciled security disposition, and no suppressed/relaxed requirements.
+
+#### P4 — Release acceptance at one final source SHA
+
+- [ ] **P4.1 Pin the final SHA** after all implementation/rework and tracker commits. Record installed versions, trusted baseline SHA, performance harness provenance, PHP 8.4/8.5 extension matrix and all required workflow identifiers.
+- [ ] **P4.2 Run full Security & Standards/PHPForge certification**, including static analysis, tests, applicable security checks, full PHPForge benchmark matrix, strict Sphinx, distributable archive and both clean no-dev consumer versions. A PR's abbreviated QA check does not replace release-only benchmark jobs.
+- [ ] **P4.3 Run complete Runtime Release Certification** at exactly the pinned source SHA: H1/H2/H3, 30-minute persistent-worker soak, eight load shards and both SAPI/Runwire **aggregate** performance checks, all successful. Optional self-hosted deployment H3 remains explicitly conditional.
+- [ ] **P4.4 Reconcile remaining original audit qualifications** (host-controlled timeouts/abort behavior, immutable artifact activation, external security findings) and document whether they are resolved, deployment-owned or genuinely release-blocking. Do not silently interpret missing evidence as a pass.
+- [ ] **P4.5 Update the append-only tracker with exact SHA, commit list and links** and publish an explicit READY or BLOCKED disposition. Any subsequent source or documentation commit advances HEAD and requires final-SHA verification again.
+- [ ] **P4 acceptance:** Full evidence set green **at the exact final SHA** with no missing mandatory check. Keep PR #59 draft and do not merge, tag or publish unless separately authorized.
+
+#### Decision and execution contract for P1–P4
+
+| Observation | Next action | What must remain blocked |
+| --- | --- | --- |
+| A/A has reproducible budget failures | Fix or isolate measurement setup; do not mistake A/A noise for a production regression | P2 release acceptance, P4 |
+| A/A reproducible, A/B failing | Profile and fix the actual source regression; retest with valid response/latency data | P4 |
+| A/A reproducible and A/B passing | Complete P3 evidence and exact-SHA P4 certification | Merge/tag until P4 |
+| Results mixed or inconclusive | Preserve artifacts; add controlled trials/attribution and record uncertainty | Release-ready claim |
+
+**Batch discipline:** One coherent batch = one commit including tests and appended tracker entry. Sync check-run links before calling a batch verified. A batch failing CI remains open until repaired and verified. Continue P3 security work in parallel only when it does not interfere with P1/P2 measurements. All performance acceptance gates remain unchanged; do not trade correctness for benchmarks.
+
 ### Append-only batch tracker
 
 | When (UTC) | Batch | Commit SHA | QA evidence | Decision / next |
