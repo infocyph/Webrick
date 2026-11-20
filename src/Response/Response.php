@@ -325,7 +325,7 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
+     * @param callable(): (iterable<mixed>|scalar|\Stringable|null)|iterable<mixed> $producer
      * @param array<string,string|list<string>> $headers
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
@@ -604,7 +604,7 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
+     * @param callable(): (iterable<mixed>|scalar|\Stringable|null)|iterable<mixed> $producer
      * @return \Closure():iterable<mixed>
      */
     private static function normalizeProducer(callable|iterable $producer): \Closure
@@ -618,7 +618,7 @@ class Response
         return static function () use ($producer): iterable {
             $output = $producer();
 
-            return is_iterable($output) ? $output : [$output];
+            return is_iterable($output) ? $output : [(string) $output];
         };
     }
 

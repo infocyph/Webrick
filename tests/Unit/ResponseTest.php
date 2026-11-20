@@ -116,6 +116,23 @@ describe('Response', function () {
         expect($response->isStreaming())->toBeTrue();
     });
 
+    it('preserves callable scalar stream producer coercion from 6.0', function () {
+        $integer = Response::stream(static fn(): int => 42)->getProducer();
+        $stringable = Response::stream(static fn(): \Stringable => new class implements \Stringable {
+            public function __toString(): string
+            {
+                return 'from-stringable';
+            }
+        })->getProducer();
+
+        if ($integer === null || $stringable === null) {
+            throw new UnexpectedValueException('Stream producers must remain available.');
+        }
+
+        expect($integer())->toBe(['42'])
+            ->and($stringable())->toBe(['from-stringable']);
+    });
+
     it('creates download responses', function () {
         $response = Response::download(__FILE__, 'test.php');
 

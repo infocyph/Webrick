@@ -362,6 +362,22 @@ test('runwire response mapping keeps head body suppression and streaming chunk o
         ->and($streamWriter->endCalls)->toBe(1);
 });
 
+
+test('runwire streaming preserves scalar callback output but rejects non-string yielded chunks', function (): void {
+    $adapter = new RunwireRuntimeAdapter();
+    $writer = new RunwireAdapterWriterFixture();
+    $context = $adapter->context(runwire_adapter_request(), $writer);
+
+    $adapter->write(Response::stream(static fn(): int => 42), $context);
+    expect($writer->chunks)->toBe(['42'])
+        ->and($writer->endCalls)->toBe(1);
+
+    $invalidWriter = new RunwireAdapterWriterFixture();
+    $invalidContext = $adapter->context(runwire_adapter_request(), $invalidWriter);
+    expect(fn() => $adapter->write(Response::stream([42]), $invalidContext))
+        ->toThrow(UnexpectedValueException::class, 'must yield strings');
+});
+
 test('runwire adapter detects transport pressure instead of overrunning the writer', function (): void {
     $adapter = new RunwireRuntimeAdapter();
     $writer = new RunwireAdapterWriterFixture();
