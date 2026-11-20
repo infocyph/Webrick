@@ -30,30 +30,8 @@ head -c 32768 /dev/zero > "$PAYLOAD"
 SUPERVISOR_EVENTS_SOURCE="$ROOT/.runtime-certification/router.php.supervisor-events.jsonl"
 SUPERVISOR_EVENTS="$RESULT_DIR/supervisor-events.jsonl"
 
-descendants() {
-    local parent="$1"
-    local child
-    echo "$parent"
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        descendants "$child"
-    done < <(pgrep -P "$parent" 2>/dev/null || true)
-}
-
-rss_kb() {
-    local pid="$1"
-    local total=0
-    local child
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        local rss
-        rss="$(ps -o rss= -p "$child" 2>/dev/null | tr -d ' ' || true)"
-        if [[ "$rss" =~ ^[0-9]+$ ]]; then
-            total=$((total + rss))
-        fi
-    done < <(descendants "$pid" | sort -u)
-    echo "$total"
-}
+source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
+init_rss_sampling
 
 wait_ready() {
     for _ in $(seq 1 100); do
