@@ -14,6 +14,7 @@ RUNWIRE_TAIL_SECONDS="${9:-$DURATION_SECONDS}"
 source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/load-source-control.sh"
 load_select_admission_modes "$BASELINE_ROOT" "$CANDIDATE_ROOT"
+load_validate_trials "$TRIALS"
 SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
 
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
@@ -428,12 +429,8 @@ warm_server() {
 record_pair() {
     local mode="$1" concurrency="$2" trial="$3" workload="$4" path="$5"
     local duration="${6:-$DURATION_SECONDS}"
-    local -a versions=(baseline candidate)
-    if (( trial % 2 == 0 )); then
-        versions=(candidate baseline)
-    fi
     local version
-    for version in "${versions[@]}"; do
+    for version in $(load_pair_order "$trial"); do
         record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" \
             "${SERVER_PORTS[$version]}" "${SERVER_PIDS[$version]}" "$path" "$duration"
     done
@@ -444,8 +441,17 @@ run_mode_pair() {
     local -A ports=([baseline]="$2" [candidate]="$3")
     local trial concurrency workload version
     for trial in $(seq 1 "$TRIALS"); do
-        warm_server baseline "$BASELINE_ROOT" "$mode" "${ports[baseline]}" "$trial"
-        warm_server candidate "$CANDIDATE_ROOT" "$mode" "${ports[candidate]}" "$trial"
+        # Match warmup/startup order to the measurement order, balancing both
+        # first and second position equally across even-numbered trials.
+        printf 'mode=%s trial=%s order=%s\n' "$mode" "$trial" \
+            "$(load_pair_order "$trial" | paste -sd, -)" >> "$RESULT_DIR/pair-order.txt"
+        for version in $(load_pair_order "$trial"); do
+            if [[ "$version" == baseline ]]; then
+                warm_server "$version" "$BASELINE_ROOT" "$mode" "${ports[baseline]}" "$trial"
+            else
+                warm_server "$version" "$CANDIDATE_ROOT" "$mode" "${ports[candidate]}" "$trial"
+            fi
+        done
         # Keep matching samples close while running only one load client at a time.
         for concurrency in $SELECTED_CONCURRENCIES; do
             record_pair "$mode" "$concurrency" "$trial" static /cert/static
