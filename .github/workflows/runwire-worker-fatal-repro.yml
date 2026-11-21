@@ -1,0 +1,52 @@
+name: Runwire worker-fatal reproducer
+on:
+  push:
+    branches: [perf/main-6.0.4-aa-20261121]
+    paths:
+      - .github/workflows/runwire-worker-fatal-repro.yml
+      - .github/certification/runwire-worker-fatal-repro.sh
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    name: Runwire worker crash (${{ matrix.variant }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [released, notice_fix]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          path: diagnostics
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: 981d095251dc3bf9c65c434f0d84aecb38025f88
+          path: source
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+      - name: Install Runwire 3.0.1 and client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq wrk
+          composer install --working-dir=source --no-interaction --no-progress --prefer-dist
+          php -r '
+          require "source/vendor/autoload.php";
+          if (\Composer\InstalledVersions::getPrettyVersion("infocyph/runwire") !== "3.0.1") {
+              throw new RuntimeException("Runwire 3.0.1 is required.");
+          }'
+      - name: Reproduce uncaught worker failure with safe diagnostics
+        run: bash diagnostics/.github/certification/runwire-worker-fatal-repro.sh "$PWD/source" "$PWD/crash-evidence" "${{ matrix.variant }}"
+      - name: Preserve worker evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runwire-fatal-${{ matrix.variant }}
+          path: crash-evidence/
+          if-no-files-found: warn
+          retention-days: 30
