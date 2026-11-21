@@ -1,0 +1,120 @@
+name: Main 6.0.4 — isolated A/A performance control
+
+# Diagnostic only: two identical pinned main checkouts. This workflow does not
+# certify the Webrick 6.1 release or modify main/master.
+on:
+  push:
+    branches:
+      - perf/main-6.0.4-aa-20261121
+    paths:
+      - ".github/workflows/main-6.0.4-aa-control.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-604-aa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  main-identical-source:
+    name: Main 6.0.4 A/A (${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sapi, runwire]
+    env:
+      MAIN_SOURCE_SHA: 981d095251dc3bf9c65c434f0d84aecb38025f88
+      CERT_TRIALS: "4"
+      CERT_DURATION_SECONDS: "10"
+    steps:
+      - name: Check out exact main as baseline
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: 981d095251dc3bf9c65c434f0d84aecb38025f88
+          path: baseline
+          fetch-depth: 0
+
+      - name: Check out exact main as candidate
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: 981d095251dc3bf9c65c434f0d84aecb38025f88
+          path: candidate
+          fetch-depth: 0
+
+      - name: Confirm both measured source trees are identical to main
+        run: |
+          set -euo pipefail
+          for checkout in baseline candidate; do
+            test "$(git -C "$checkout" rev-parse HEAD)" = "$MAIN_SOURCE_SHA"
+            test -z "$(git -C "$checkout" status --porcelain --untracked-files=no)"
+          done
+          test "$(realpath baseline)" != "$(realpath candidate)"
+          cmp baseline/composer.json candidate/composer.json
+          mkdir -p cert-results
+          printf 'control=identical-source-main-6.0.4\nmain_sha=%s\ntrials=%s\nduration_seconds=%s\nmode=%s\n' \
+            "$MAIN_SOURCE_SHA" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "${{ matrix.mode }}" \
+            > cert-results/provenance.txt
+
+      - name: Set up identical PHP runtime
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+
+      - name: Install load tools and lock both dependency trees
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y curl jq wrk
+          composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
+          # main does not commit composer.lock. Resolve it once and install the
+          # same dependency graph on the second checkout, then prove parity.
+          test -f baseline/composer.lock
+          cp baseline/composer.lock candidate/composer.lock
+          composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
+          cmp baseline/composer.lock candidate/composer.lock
+          cmp baseline/composer.json candidate/composer.json
+          test -z "$(git -C baseline diff --name-only)"
+          test -z "$(git -C candidate diff --name-only)"
+          printf 'composer_lock_sha256=%s\n' "$(sha256sum baseline/composer.lock | cut -d' ' -f1)" \
+            >> cert-results/provenance.txt
+          php -v > cert-results/php-version.txt
+          php -m > cert-results/php-extensions.txt
+
+      - name: Verify unchanged main RSS-sampling control
+        run: bash candidate/.github/certification/test-load-rss-sampler.sh
+
+      - name: Run four paired main-versus-main trials with normal correctness checks
+        run: |
+          set -euo pipefail
+          bash candidate/.github/certification/load-benchmark.sh \
+            "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
+            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" \
+            "${{ matrix.mode }}"
+
+      - name: Evaluate original strict performance budgets (diagnostic verdict)
+        run: |
+          set -euo pipefail
+          php candidate/.github/certification/analyze-load.php \
+            --input="$PWD/cert-results/load-results.jsonl" \
+            --summary="$PWD/cert-results/summary.md" \
+            --json="$PWD/cert-results/comparison.json" \
+            --profile="${{ matrix.mode }}" \
+            --trials="$CERT_TRIALS" \
+            --throughput-regression-percent=2 \
+            --p99-regression-percent=15 \
+            --memory-regression-mb=32
+          cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete A/A evidence (including failures)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: main-6.0.4-identical-source-aa-${{ matrix.mode }}
+          path: cert-results/
+          if-no-files-found: error
