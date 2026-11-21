@@ -17,6 +17,19 @@ final readonly class WebrickRuntimeScopedMarker
     public function __construct(public string $id) {}
 }
 
+/**
+ * Fail explicitly when a scoped container returns a non-marker value.
+ * @throws \UnexpectedValueException
+ */
+function webrick_checked_scope_marker(mixed $value): WebrickRuntimeScopedMarker
+{
+    if (!$value instanceof WebrickRuntimeScopedMarker) {
+        throw new UnexpectedValueException('InterMix scope resolved an invalid marker.');
+    }
+
+    return $value;
+}
+
 /** @return array{RuntimeContainerInterface,InterMixRuntime} */
 function webrick_runtime_scope_fixture(): array
 {
@@ -34,24 +47,25 @@ function webrick_runtime_scope_fixture(): array
 }
 
 test('InterMix runtime propagates one logical request scope into structured child work', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
     $parent = null;
     $child = null;
 
     try {
         $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime, &$parent, &$child): void {
-            $parent = $active->get(WebrickRuntimeScopedMarker::class);
+            $parent = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             $scopeContext = $runtime->captureScopeContext();
 
-            expect($scopeContext)->toBeInstanceOf(ScopeContext::class);
-
+            // The child fiber assertion below verifies actual scope propagation.
             $fiber = new Fiber(static function () use ($runtime, $scopeContext): WebrickRuntimeScopedMarker {
-                return $runtime->withinScopeContext(
+                $resolved = $runtime->withinScopeContext(
                     $scopeContext,
-                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => webrick_checked_scope_marker($childContainer->get(
                         WebrickRuntimeScopedMarker::class,
-                    ),
+                    )),
                 );
+
+                return webrick_checked_scope_marker($resolved);
             });
             $fiber->start();
             $child = $fiber->getReturn();
@@ -65,30 +79,32 @@ test('InterMix runtime propagates one logical request scope into structured chil
 });
 
 test('InterMix runtime propagates explicit scope context through Runwire task locals only when attached', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     try {
         $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {
-            $parent = $active->get(WebrickRuntimeScopedMarker::class);
+            $parent = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             $scopeContext = $runtime->captureScopeContext();
             $scopeLocal = new TaskLocal();
 
             $resolved = new CoroutineRuntime()->run(
                 static function (CoroutineScope $scope) use ($runtime, $scopeContext, $scopeLocal): array {
                     $scope->setLocal($scopeLocal, $scopeContext);
-                    $spawnAttached = static function () use ($runtime, $scope, $scopeLocal) {
+                    $spawnAttached = static function () use ($runtime, $scope, $scopeLocal): \Infocyph\Runwire\Coroutine\Task {
                         return $scope->spawn(static function () use ($runtime, $scope, $scopeLocal): WebrickRuntimeScopedMarker {
                             $captured = $scope->local($scopeLocal);
                             if (!$captured instanceof ScopeContext) {
                                 throw new RuntimeException('Runwire task-local scope context was not inherited.');
                             }
 
-                            return $runtime->withinScopeContext(
+                            $resolved = $runtime->withinScopeContext(
                                 $captured,
-                                static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                                static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => webrick_checked_scope_marker($childContainer->get(
                                     WebrickRuntimeScopedMarker::class,
-                                ),
+                                )),
                             );
+
+                            return webrick_checked_scope_marker($resolved);
                         });
                     };
 
@@ -118,18 +134,18 @@ test('InterMix runtime propagates explicit scope context through Runwire task lo
 });
 
 test('InterMix runtime keeps independent fiber request scopes isolated when no context is propagated', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     $makeFiber = static fn(): Fiber => new Fiber(
-        static fn(): WebrickRuntimeScopedMarker => $runtime->withinScope(
+        static fn(): WebrickRuntimeScopedMarker => webrick_checked_scope_marker($runtime->withinScope(
             'request',
             static function (RuntimeContainerInterface $active): WebrickRuntimeScopedMarker {
-                $marker = $active->get(WebrickRuntimeScopedMarker::class);
-                Fiber::suspend($marker);
+                $marker = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
+                expect(Fiber::suspend($marker))->toBeNull();
 
-                return $active->get(WebrickRuntimeScopedMarker::class);
+                return webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             },
-        ),
+        )),
     );
 
     try {
@@ -152,11 +168,11 @@ test('InterMix runtime keeps independent fiber request scopes isolated when no c
 });
 
 test('InterMix runtime detaches propagated scope context when child work throws', function (): void {
-    [$container, $runtime] = webrick_runtime_scope_fixture();
+    [, $runtime] = webrick_runtime_scope_fixture();
 
     try {
         $runtime->withinScope('request', static function (RuntimeContainerInterface $active) use ($runtime): void {
-            $parent = $active->get(WebrickRuntimeScopedMarker::class);
+            $parent = webrick_checked_scope_marker($active->get(WebrickRuntimeScopedMarker::class));
             $scopeContext = $runtime->captureScopeContext();
             $failingChild = new Fiber(static function () use ($runtime, $scopeContext): void {
                 $runtime->withinScopeContext(
@@ -172,12 +188,14 @@ test('InterMix runtime detaches propagated scope context when child work throws'
                 ->toThrow(RuntimeException::class, 'structured-child-failure');
 
             $replacementChild = new Fiber(static function () use ($runtime, $scopeContext): WebrickRuntimeScopedMarker {
-                return $runtime->withinScopeContext(
+                $resolved = $runtime->withinScopeContext(
                     $scopeContext,
-                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => $childContainer->get(
+                    static fn(RuntimeContainerInterface $childContainer): WebrickRuntimeScopedMarker => webrick_checked_scope_marker($childContainer->get(
                         WebrickRuntimeScopedMarker::class,
-                    ),
+                    )),
                 );
+
+                return webrick_checked_scope_marker($resolved);
             });
             $replacementChild->start();
 

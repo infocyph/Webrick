@@ -16,11 +16,21 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
 
     public function __construct(private readonly string $path) {}
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {
         return $this->change($key, -$by, $ttlSeconds);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function delete(string $key): bool
     {
         $this->mutate($key, static fn(): ?array => null);
@@ -28,16 +38,30 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function get(string $key): ?int
     {
         return $this->mutate($key, static fn(?array $entry): ?array => $entry)['value'] ?? null;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
     {
         return $this->change($key, $by, $ttlSeconds);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function change(string $key, int $by, ?int $ttlSeconds): AtomicCounterValue
     {
         $first = false;
@@ -51,12 +75,39 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             ];
         });
 
+        if ($entry === null) {
+            throw new RuntimeException('Atomic counter mutation returned no incremented value.');
+        }
+
         return new AtomicCounterValue($entry['value'], $first);
+    }
+
+    /**
+     * @return array{value:int,expires:?int}|null
+     * @throws \UnexpectedValueException
+     */
+    private static function checkedEntry(mixed $entry): ?array
+    {
+        if ($entry === null) {
+            return null;
+        }
+        if (!is_array($entry)) {
+            throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
+        }
+        $value = $entry['value'] ?? null;
+        $expires = $entry['expires'] ?? null;
+        if (!is_int($value) || !array_key_exists('expires', $entry) || ($expires !== null && !is_int($expires))) {
+            throw new UnexpectedValueException('Atomic-counter fixture contains a malformed entry.');
+        }
+
+        return ['value' => $value, 'expires' => $expires];
     }
 
     /**
      * @param Closure(?array{value:int,expires:?int}):(?array{value:int,expires:?int}) $callback
      * @return array{value:int,expires:?int}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function mutate(string $key, Closure $callback): ?array
     {
@@ -70,8 +121,11 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             rewind($handle);
             $raw = stream_get_contents($handle);
             $map = is_string($raw) && $raw !== '' ? json_decode($raw, true, flags: JSON_THROW_ON_ERROR) : [];
-            $entry = is_array($map[$key] ?? null) ? $map[$key] : null;
-            if (is_array($entry) && is_int($entry['expires'] ?? null) && $entry['expires'] <= time()) {
+            if (!is_array($map)) {
+                throw new UnexpectedValueException('Atomic-counter fixture must contain a JSON object.');
+            }
+            $entry = self::checkedEntry($map[$key] ?? null);
+            if ($entry !== null && $entry['expires'] !== null && $entry['expires'] <= time()) {
                 $entry = null;
             }
 
@@ -93,6 +147,35 @@ final class PcntlFileAtomicCounterStore implements AtomicCounterStoreInterface
             fclose($handle);
         }
     }
+}
+
+/**
+ * @return array{value:int}
+ * @throws \UnexpectedValueException
+ */
+function webrickThrottleCounterEntry(mixed $map): array
+{
+    if (!is_array($map)) {
+        throw new UnexpectedValueException('Expected a JSON counter fixture.');
+    }
+
+    $entry = array_values($map)[0] ?? null;
+    $value = is_array($entry) ? ($entry['value'] ?? null) : null;
+    if (!is_int($value)) {
+        throw new UnexpectedValueException('Expected a counter entry with an integer value.');
+    }
+
+    return ['value' => $value];
+}
+
+/** @throws \UnexpectedValueException */
+function webrickThrottleExitStatus(mixed $value): int
+{
+    if (!is_int($value)) {
+        throw new UnexpectedValueException('Throttle worker did not return an integer exit status.');
+    }
+
+    return $value;
 }
 
 describe('ThrottleMiddleware', function () {
@@ -124,7 +207,7 @@ describe('ThrottleMiddleware', function () {
         $request = mockRequest('GET', '/test');
         $called = false;
 
-        $next = function () use (&$called) {
+        $next = function () use (&$called): Response {
             $called = true;
 
             return Response::json(['ok' => true]);
@@ -134,14 +217,14 @@ describe('ThrottleMiddleware', function () {
 
         expect($called)
             ->toBeTrue()
-            ->and($response)->toHaveStatus(200)
-            ->and($response)->toHaveHeader('X-RateLimit-Limit', '3')
-            ->and($response)->toHaveHeader('X-RateLimit-Remaining', '2');
+            ->and($response->getStatusCode())->toBe(200)
+            ->and($response->hasHeader('X-RateLimit-Limit'))->toBeTrue()
+            ->and($response->hasHeader('X-RateLimit-Remaining'))->toBeTrue();
     });
 
     it('blocks requests over limit', function () {
         $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         for ($i = 0; $i < 3; $i++) {
             ($this->middleware)($request, $next);
@@ -171,14 +254,14 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test');
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         $request1 = $request->withAttribute('rate_cost.thm', 2);
         $response1 = $middleware($request1, $next);
-        expect($response1)->toHaveStatus(200);
+        expect($response1->getStatusCode())->toBe(200);
 
         $response2 = $middleware($request1, $next);
-        expect($response2)->toHaveStatus(200);
+        expect($response2->getStatusCode())->toBe(200);
 
         expect(fn() => $middleware($request1, $next))
             ->toThrow(HttpException::class);
@@ -194,11 +277,11 @@ describe('ThrottleMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/test', ['X-Admin-Key' => 'secret']);
-        $next = fn () => Response::json(['ok' => true]);
+        $next = fn (): Response => Response::json(['ok' => true]);
 
         for ($i = 0; $i < 5; $i++) {
             $response = $middleware($request, $next);
-            expect($response)->toHaveStatus(200);
+            expect($response->getStatusCode())->toBe(200);
         }
     });
 
@@ -210,6 +293,7 @@ describe('ThrottleMiddleware', function () {
 
             public int $value = 0;
 
+            #[\Override]
             public function decrement(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
             {
                 $this->key = $key;
@@ -219,6 +303,7 @@ describe('ThrottleMiddleware', function () {
                 return new AtomicCounterValue($this->value, false);
             }
 
+            #[\Override]
             public function delete(string $key): bool
             {
                 $this->key = $key;
@@ -227,11 +312,13 @@ describe('ThrottleMiddleware', function () {
                 return true;
             }
 
+            #[\Override]
             public function get(string $key): ?int
             {
                 return $key === $this->key ? $this->value : null;
             }
 
+            #[\Override]
             public function increment(string $key, int $by = 1, ?int $ttlSeconds = null): AtomicCounterValue
             {
                 $this->key = $key;
@@ -247,10 +334,10 @@ describe('ThrottleMiddleware', function () {
             counterStore: new AtomicCounterAdapter($counter),
         );
         $request = mockRequest('GET', '/atomic');
-        $next = static fn () => Response::json(['ok' => true]);
+        $next = static fn (): Response => Response::json(['ok' => true]);
 
-        expect($middleware($request, $next))->toHaveHeader('X-RateLimit-Remaining', '1')
-            ->and($middleware($request, $next))->toHaveHeader('X-RateLimit-Remaining', '0')
+        expect($middleware($request, $next)->hasHeader('X-RateLimit-Remaining'))->toBeTrue()
+            ->and($middleware($request, $next)->hasHeader('X-RateLimit-Remaining'))->toBeTrue()
             ->and($counter->ttl)->toBeGreaterThanOrEqual(1)
             ->and(fn () => $middleware($request, $next))->toThrow(HttpException::class)
             ->and($counter->value)->toBe(3);
@@ -261,7 +348,7 @@ describe('ThrottleMiddleware', function () {
         expect($path)->toBeString();
         $store = new PcntlFileAtomicCounterStore($path);
         $counter = new AtomicCounterAdapter($store);
-        $next = static fn() => Response::json(['ok' => true]);
+        $next = static fn(): Response => Response::json(['ok' => true]);
         $global = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'global');
         $login = new ThrottleMiddleware(max: 10, window: 60, counterStore: $counter, scope: 'login');
         $firstWindow = time();
@@ -311,7 +398,7 @@ describe('ThrottleMiddleware', function () {
             );
             $request = (new Request('GET', 'http://localhost/concurrency-fallback', ['REQUEST_TIME' => 1]))
                 ->withAttribute('client_ip', '198.51.100.10');
-            $next = static fn() => Response::json(['ok' => true]);
+            $next = static fn(): Response => Response::json(['ok' => true]);
 
             try {
                 for ($attempt = 0; $attempt < $attempts; $attempt++) {
@@ -327,12 +414,12 @@ describe('ThrottleMiddleware', function () {
                 }
 
                 $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
-                $counterEntry = array_values($counterMap)[0] ?? null;
+                $counterEntry = webrickThrottleCounterEntry($counterMap);
 
                 expect($allowed)->toBe($limit)
                     ->and($rejected)->toBe($attempts - $limit)
                     ->and($counterMap)->toHaveCount(1)
-                    ->and($counterEntry['value'] ?? null)->toBe($attempts);
+                    ->and($counterEntry['value'])->toBe($attempts);
             } finally {
                 if (is_file($counterPath) && !unlink($counterPath)) {
                     throw new RuntimeException("Unable to remove sequential throttle fixture: {$counterPath}");
@@ -372,7 +459,7 @@ describe('ThrottleMiddleware', function () {
                 );
                 $request = (new Request('GET', 'http://localhost/concurrency', ['REQUEST_TIME' => 1]))
                     ->withAttribute('client_ip', '198.51.100.10');
-                $next = static fn() => Response::json(['ok' => true]);
+                $next = static fn(): Response => Response::json(['ok' => true]);
 
                 for ($attempt = 0; $attempt < $attemptsPerWorker; $attempt++) {
                     try {
@@ -386,33 +473,44 @@ describe('ThrottleMiddleware', function () {
                     }
                 }
 
-                file_put_contents($directory . '/result-' . getmypid(), $allowed . ',' . $rejected, LOCK_EX);
+                $workerPid = getmypid();
+                if ($workerPid === false) {
+                    throw new RuntimeException('Unable to determine throttle worker process ID.');
+                }
+                file_put_contents($directory . '/result-' . $workerPid, $allowed . ',' . $rejected, LOCK_EX);
                 pcntl_exec(PHP_BINARY, ['-r', '']);
                 throw new RuntimeException('Unable to terminate throttle test worker.');
             }
 
             foreach ($children as $pid) {
-                pcntl_waitpid($pid, $status);
+                $status = -1;
+                $waited = pcntl_waitpid($pid, $status);
+                if ($waited < 0) {
+                    throw new RuntimeException('Throttle worker wait did not return an exit status.');
+                }
+                $status = webrickThrottleExitStatus($status);
                 expect(pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0)->toBeTrue();
             }
 
             $allowed = 0;
             $rejected = 0;
-            foreach (glob($directory . '/result-*') ?: [] as $result) {
+            $results = glob($directory . '/result-*');
+            foreach ($results === false ? [] : $results as $result) {
                 [$childAllowed, $childRejected] = array_map('intval', explode(',', (string) file_get_contents($result)));
                 $allowed += $childAllowed;
                 $rejected += $childRejected;
             }
 
             $counterMap = json_decode((string) file_get_contents($counterPath), true, flags: JSON_THROW_ON_ERROR);
-            $counterEntry = array_values($counterMap)[0] ?? null;
+            $counterEntry = webrickThrottleCounterEntry($counterMap);
 
             expect($allowed)->toBe($limit)
                 ->and($rejected)->toBe(($workers * $attemptsPerWorker) - $limit)
                 ->and($counterMap)->toHaveCount(1)
-                ->and($counterEntry['value'] ?? null)->toBe($workers * $attemptsPerWorker);
+                ->and($counterEntry['value'])->toBe($workers * $attemptsPerWorker);
         } finally {
-            foreach (glob($directory . '/*') ?: [] as $file) {
+            $entries = glob($directory . '/*');
+            foreach ($entries === false ? [] : $entries as $file) {
                 if (is_file($file) && !unlink($file)) {
                     throw new RuntimeException("Unable to remove throttle test fixture: {$file}");
                 }

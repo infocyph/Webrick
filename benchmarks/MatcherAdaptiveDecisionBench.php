@@ -21,14 +21,21 @@ final class MatcherAdaptiveDecisionBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
+    /**
+     * @param array{matcher:string,path:non-empty-string} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideCases')]
     public function benchAdaptiveDecision(array $params): void
     {
-        self::matcher((string) $params['matcher'])
-            ->matchCompiled('GET', '*', (string) $params['path']);
+        self::matcher($params['matcher'])
+            ->matchCompiled('GET', '*', $params['path']);
     }
 
-    /** @return iterable<string,array{matcher:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {
@@ -43,6 +50,12 @@ final class MatcherAdaptiveDecisionBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private static function matcher(string $mode): MatcherInterface
     {
         if (isset(self::$matchers[$mode])) {

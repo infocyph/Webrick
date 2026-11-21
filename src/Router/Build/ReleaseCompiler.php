@@ -33,6 +33,9 @@ final readonly class ReleaseCompiler
         return hash('xxh128', $encoded);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function runtimeManifestPath(string $releaseManifestPath): string
     {
         $path = trim($releaseManifestPath);
@@ -58,6 +61,9 @@ final readonly class ReleaseCompiler
      * @param list<string> $postGlobalTags
      * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function compile(
         ContainerBuilder $builder,
@@ -95,6 +101,12 @@ final readonly class ReleaseCompiler
         $intermix = $builder->compile($intermixPath);
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
+        $intermixSourcePath = realpath($intermixPath);
+        $intermixSourceSha256 = $intermixSourcePath === false ? false : hash_file('sha256', $intermixSourcePath);
+        if (!is_string($intermixSourceSha256)) {
+            throw new RuntimeException('Unable to hash coordinated release executable artifacts.');
+        }
+
         $manifest = [
             'format' => self::RELEASE_FORMAT,
             'environment' => $environment,
@@ -102,6 +114,7 @@ final readonly class ReleaseCompiler
             'intermix' => [
                 'path' => $intermixPath,
                 'digest' => $intermix['digest'],
+                'source_sha256' => $intermixSourceSha256,
                 'graph' => $intermix['graph'],
                 'build' => $intermix['build'],
                 'artifact' => basename($intermix['artifact']),
@@ -144,6 +157,9 @@ final readonly class ReleaseCompiler
         return $value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeAtomic(string $path, string $contents): void
     {
         $directory = dirname($path);

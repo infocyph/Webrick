@@ -6,6 +6,7 @@ namespace Infocyph\Webrick\Runtime\Http;
 
 use Closure;
 use Infocyph\Webrick\Request\Request;
+use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 
 /**
@@ -36,6 +37,7 @@ final class RuntimeRequestContext
         public readonly mixed $nativeResponse = null,
         public readonly ?RuntimeRequestExecution $execution = null,
         public readonly ?RuntimeScopeBridgeInterface $scopeBridge = null,
+        public readonly ?Response $preRoutingResponse = null,
     ) {}
 
     public function request(): Request

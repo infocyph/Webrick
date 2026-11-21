@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 use Infocyph\InterMix\DI\ContainerBuilder;
 use Infocyph\Runwire\Http\Headers;
-use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\Http3\Http3Options;
+use Infocyph\Runwire\Http\HttpRequest;
 use Infocyph\Runwire\Http\ResponseWriterInterface;
 use Infocyph\Runwire\Network\TlsOptions;
 use Infocyph\Runwire\Runtime;
 use Infocyph\Runwire\Runtime\Enum\RuntimeDriver;
 use Infocyph\Runwire\RuntimeOptions;
 use Infocyph\Runwire\Server;
-use Infocyph\Runwire\Supervisor\WorkerRecyclePolicy;
 use Infocyph\Runwire\Supervisor\SupervisorEvent;
+use Infocyph\Runwire\Supervisor\WorkerRecyclePolicy;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\RouteCompiler;
@@ -22,14 +22,40 @@ use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
+use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
-use Infocyph\Webrick\Runtime\Http\RuntimeServer;
 use Infocyph\Webrick\Runtime\Http\SapiRuntimeAdapter;
 use Psr\Log\NullLogger;
 
+require_once __DIR__ . '/cert-risk.php';
+
 const CERT_ENVIRONMENT = 'certification';
 const CERT_FINGERPRINT = 'webrick-runtime-release-certification-v1';
+
+/**
+ * The operator selects the checkout whose executable artifacts this tool runs.
+ * HTTP request values never choose this root; the host sets it in the process environment.
+ *
+ * @psalm-taint-escape file
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ * @psalm-taint-escape include
+ * @throws \RuntimeException
+ */
+function certification_root(string $path): string
+{
+    if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+        throw new RuntimeException('Certification root must be a non-empty local checkout path.');
+    }
+    $root = realpath($path);
+    if ($root === false || !is_dir($root)) {
+        throw new RuntimeException('Certification root does not exist.');
+    }
+
+    return $root;
+}
 
 /** @return array<string,string|bool|int> */
 function certification_arguments(array $argv): array
@@ -46,7 +72,10 @@ function certification_arguments(array $argv): array
     return $arguments;
 }
 
-/** @return array{intermix:string,router:string} */
+/**
+ * @return array{intermix:string,router:string}
+ * @throws \RuntimeException
+ */
 function certification_artifacts(string $root): array
 {
     $directory = $root . DIRECTORY_SEPARATOR . '.runtime-certification';
@@ -65,9 +94,7 @@ function certification_builder(): ContainerBuilder
     $builder = ContainerBuilder::create('webrick.runtime.certification');
     // These handlers receive Request directly from Webrick and do not use DI inputs.
     $builder->setEnvironment(CERT_ENVIRONMENT);
-    if (method_exists($builder, 'releaseIdentity')) {
-        $builder->releaseIdentity(CERT_FINGERPRINT);
-    }
+    $builder->releaseIdentity(CERT_FINGERPRINT);
 
     return $builder;
 }
@@ -81,6 +108,11 @@ function certification_cleanup_artifact(string $path): void
     }
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ * @throws \LogicException
+ */
 function certification_prepare(string $root): void
 {
     $paths = certification_artifacts($root);
@@ -91,8 +123,22 @@ function certification_prepare(string $root): void
     file_put_contents($filePath, str_repeat('0123456789abcdef', 256));
 
     $builder = certification_builder();
+    if (getenv('WEBRICK_CERT_ADMISSION') !== false) {
+        certification_risk_prepare();
+    }
     $build = new RouteCompiler()->compile(
         register: static function (Registrar $registrar) use ($filePath): void {
+            foreach (['risk_allow', 'risk_counter', 'risk_clearance', 'risk_login', 'risk_login_invalid', 'risk_provider_slow'] as $workload) {
+                $registrar->post(
+                    '/cert/' . $workload,
+                    str_starts_with($workload, 'risk_login') || $workload === 'risk_provider_slow'
+                        ? static fn(Request $request): Response => certification_risk_login($request)
+                        : static fn(): Response => Response::plaintext('risk-admitted', 200),
+                    ['middleware' => [
+                        static fn(Request $request, callable $next): Response => certification_risk_admit($request, $next, $workload),
+                    ]],
+                );
+            }
             $registrar->get('/cert/static', static fn(): Response => Response::plaintext('webrick-cert-ok', 200));
             $registrar->get(
                 '/cert/dynamic/{id}',
@@ -215,6 +261,11 @@ function certification_prepare(string $root): void
     new RouterArtifactCompiler()->compile($build, $paths['router']);
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ * @throws \LogicException
+ */
 function certification_kernel(string $root): CompiledRouterKernel
 {
     $paths = certification_artifacts($root);
@@ -223,7 +274,11 @@ function certification_kernel(string $root): CompiledRouterKernel
     }
 
     if (method_exists(ContainerBuilder::class, 'loadProductionArtifact')) {
-        $graph = require $paths['intermix'] . '.release.php';
+        $graphPath = $paths['intermix'] . '.release.php';
+        if (!is_file($graphPath)) {
+            throw new RuntimeException('Certification deployment graph identity is missing.');
+        }
+        $graph = require $graphPath;
         if (!is_string($graph)) {
             throw new RuntimeException('Certification deployment graph identity is missing.');
         }
@@ -282,6 +337,9 @@ function certification_record_event(string $path, SupervisorEvent $event): void
     );
 }
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function certification_write_json(ResponseWriterInterface $writer, array $payload): void
 {
     $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -292,6 +350,14 @@ function certification_write_json(ResponseWriterInterface $writer, array $payloa
     $writer->end($json);
 }
 
+/**
+ * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+ * @throws \Infocyph\Runwire\Exception\SupervisorException
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
+ * @throws \RuntimeException
+ * @throws \Throwable
+ */
 function certification_runwire(
     string $root,
     string $address,
@@ -357,9 +423,14 @@ function certification_runwire(
     $runtime->listen($definition)->run();
 }
 
+/**
+ * @throws \RuntimeException
+ * @throws \InvalidArgumentException
+ * @throws \Throwable
+ */
 function certification_sapi(string $root): void
 {
-    $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     if ($path === '/__cert/metrics') {
         header('Content-Type: application/json');
         $payload = json_encode([
@@ -383,26 +454,32 @@ function certification_sapi(string $root): void
     )->handle();
 }
 
-$root = realpath((string) (getenv('WEBRICK_CERT_ROOT') ?: ''));
-if (PHP_SAPI === 'cli-server') {
-    if ($root === false) {
-        throw new RuntimeException('WEBRICK_CERT_ROOT must reference a checkout.');
+if (PHP_SAPI === 'cli-server' || PHP_SAPI === 'fpm-fcgi') {
+    $configuredRoot = getenv('WEBRICK_CERT_ROOT');
+    $root = certification_root($configuredRoot === false ? '' : $configuredRoot);
+    $autoload = $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+    if (!is_file($autoload)) {
+        throw new RuntimeException('Certification dependencies are missing. Run composer install first.');
     }
-    require $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+    require $autoload;
     certification_sapi($root);
 
     return;
+}
+if (PHP_SAPI !== 'cli') {
+    throw new RuntimeException('Certification commands require the CLI.');
 }
 
 $command = $argv[1] ?? '';
 $arguments = certification_arguments($argv);
 $rootArgument = (string) ($arguments['root'] ?? getcwd());
-$root = realpath($rootArgument);
-if ($root === false) {
-    throw new RuntimeException('Certification root does not exist.');
-}
+$root = certification_root($rootArgument);
 
-require $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+$autoload = $root . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+if (!is_file($autoload)) {
+    throw new RuntimeException('Certification dependencies are missing. Run composer install first.');
+}
+require $autoload;
 
 if ($command === 'prepare') {
     certification_prepare($root);

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Exceptions\MethodNotAllowedException;
 use Infocyph\Webrick\Request\Request;
-use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\ReleaseManifestLoader;
 use Infocyph\Webrick\Router\Kernel\ErrorHandler;
@@ -23,10 +22,10 @@ it('records runtime stages only when explicitly used', function (): void {
     $milliseconds = $profiler->milliseconds();
 
     expect(array_keys($nanoseconds))->toBe(['artifact', 'dispatch'])
-        ->and($nanoseconds['artifact'])->toBeInt()->toBeGreaterThanOrEqual(0)
-        ->and($nanoseconds['dispatch'])->toBeInt()->toBeGreaterThanOrEqual(0)
-        ->and($milliseconds['artifact'])->toBeFloat()
-        ->and($milliseconds['dispatch'])->toBeFloat();
+        ->and($nanoseconds['artifact'])->toBeGreaterThanOrEqual(0)
+        ->and($nanoseconds['dispatch'])->toBeGreaterThanOrEqual(0)
+        ->and($milliseconds['artifact'])->toBeGreaterThanOrEqual(0.0)
+        ->and($milliseconds['dispatch'])->toBeGreaterThanOrEqual(0.0);
 });
 
 it('derives an opcache runtime manifest path without replacing tooling json semantics', function (): void {
@@ -158,8 +157,7 @@ it('renders default routing misses without a request or throwable', function ():
     $routing = new RoutingInput('POST', '/known');
     $response = $renderer->render($routing, MatchOutcome::methodNotAllowed(['GET']));
 
-    expect($response)->toBeInstanceOf(Response::class)
-        ->and($response->getStatusCode())->toBe(405)
+    expect($response->getStatusCode())->toBe(405)
         ->and($response->getHeaderLine('Allow'))->toBe('GET');
 });
 
@@ -170,7 +168,6 @@ it('renders a known routing throwable without requiring a throw catch trampoline
 
     $response = $handler->renderThrowable($request, $error);
 
-    expect($response)->toBeInstanceOf(Response::class)
-        ->and($response->getStatusCode())->toBe(405)
+    expect($response->getStatusCode())->toBe(405)
         ->and($response->getHeaderLine('Allow'))->toContain('GET');
 });

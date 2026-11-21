@@ -1,6 +1,7 @@
 name: "Security & Standards"
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 0 * * 0"
   push:
@@ -18,8 +19,12 @@ jobs:
     if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     uses: infocyph/phpforge/.github/workflows/security-standards.yml@main
     with:
-      integration_services: '[]'
-      service_topologies: '{}'
+      # Keep fast QA/analysis on PRs; final exact-SHA workflow_dispatch
+      # restores the full PHPForge performance benchmark matrix.
+      run_benchmark: ${{ github.event_name != 'pull_request' }}
+      integration_services: '["redis"]'
+      service_topologies: '{"redis":"standalone"}'
+      php_extensions: intl,brotli,zstd
     permissions:
       security-events: write
       actions: read
@@ -33,43 +38,120 @@ jobs:
     secrets:
       COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 
-  no-intl-static-analysis:
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
-    name: PHPStan without ext-intl
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.5'
-          coverage: none
-          tools: composer:v2
-          extensions: :intl
-      - name: Verify ext-intl is absent
-        run: php -r 'if (extension_loaded("intl")) { throw new RuntimeException("ext-intl must be disabled for this analysis job."); }'
-      - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Run PHPStan without ext-intl
-        run: composer ic:test:static
 
-  detail-diagnostics:
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
-    name: PHPForge detail diagnostics
+  release-evidence:
+    name: Strict Sphinx and no-dev archive consumer
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: shivammathur/setup-php@v2
+      - name: Check out candidate
+        uses: actions/checkout@v7
         with:
-          php-version: '8.4'
+          persist-credentials: false
+
+      - name: Set up PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
           coverage: none
-          tools: composer:v2
-      - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Verify InputSanitizer without ext-intl
-        run: >-
-          php -n -r 'require "src/Support/InputSanitizer.php";
-          $sanitizer = new Infocyph\Webrick\Support\InputSanitizer(normalizeUnicode: true);
-          if ($sanitizer->sanitizeString("Ｆｏｏ") !== "Ｆｏｏ") {
-              fwrite(STDERR, "Unicode normalization must remain optional without ext-intl.\n");
-              exit(1);
-          }'
-      - name: Run exact PHPForge detail suite
-        run: composer ic:test:details
+          extensions: redis,intl,brotli,zstd
+
+      - name: Build Sphinx documentation with strict references
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/webrick-sphinx"
+          "$RUNNER_TEMP/webrick-sphinx/bin/pip" install -r docs/requirements.txt
+          "$RUNNER_TEMP/webrick-sphinx/bin/sphinx-build" -n -W --keep-going -b html docs "$RUNNER_TEMP/webrick-sphinx-html"
+
+      - name: Build and inspect the distributable Composer archive
+        shell: bash
+        run: |
+          mkdir -p .release-archive
+          composer archive --format=zip --dir=.release-archive
+          archive="$(find .release-archive -maxdepth 1 -name '*.zip' -print -quit)"
+          test -n "$archive"
+          mkdir -p "$RUNNER_TEMP/webrick-archive-extracted"
+          unzip -qq "$archive" -d "$RUNNER_TEMP/webrick-archive-extracted"
+          package="$(dirname "$(find "$RUNNER_TEMP/webrick-archive-extracted" -type f -name composer.json -print -quit)")"
+          test -f "$package/src/Middleware/RiskAdmissionMiddleware.php"
+          test -f "$package/src/Response/Body/FileBody.php"
+          test -f "$package/src/Router/Dispatch/RuntimeTaggedMiddleware.php"
+          for excluded in .github tests benchmark benchmarks docs/plans vendor; do
+            if test -e "$package/$excluded"; then
+              echo "Unexpected distribution content: $excluded" >&2
+              exit 1
+            fi
+          done
+          echo "$package" > "$RUNNER_TEMP/webrick-package-path"
+          echo "Verified archive payload at $package"
+
+      - name: Install archived Webrick in a clean no-dev consumer
+        shell: bash
+        run: |
+          consumer="$RUNNER_TEMP/webrick-consumer"
+          package="$(cat "$RUNNER_TEMP/webrick-package-path")"
+          mkdir -p "$consumer"
+          composer init --working-dir="$consumer" --name=webrick/consumer --type=project --no-interaction
+          composer config --working-dir="$consumer" minimum-stability dev
+          composer config --working-dir="$consumer" repositories.local path "$package"
+          composer require --working-dir="$consumer" --no-update "infocyph/webrick:*"
+          composer update --working-dir="$consumer" --no-dev --no-interaction --no-progress --prefer-dist
+          test ! -d "$consumer/vendor/infocyph/pathwise"
+          php -r '
+          require $argv[1] . "/vendor/autoload.php";
+          $middleware = new \Infocyph\Webrick\Middleware\RiskAdmissionMiddleware(
+              static fn(): \Infocyph\Webrick\Middleware\RiskDecision
+                  => \Infocyph\Webrick\Middleware\RiskDecision::allow(),
+          );
+          $response = $middleware(
+              \Infocyph\Webrick\Request\Request::fake(),
+              static fn(): \Infocyph\Webrick\Response\Response
+                  => \Infocyph\Webrick\Response\Response::plaintext("ok", 200),
+          );
+          if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== "ok") {
+              throw new RuntimeException("Archived no-dev risk admission smoke failed.");
+          }
+          if (class_exists(\Infocyph\Pathwise\Storage\StorageContext::class)) {
+              throw new RuntimeException("Pathwise must remain optional.");
+          }
+          ' "$consumer"
+
+      - name: Verify archived package with PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: redis,intl,brotli,zstd
+
+      - name: Install same archive in a clean PHP 8.4 no-dev consumer
+        shell: bash
+        run: |
+          consumer="$RUNNER_TEMP/webrick-consumer-php84"
+          package="$(cat "$RUNNER_TEMP/webrick-package-path")"
+          mkdir -p "$consumer"
+          composer init --working-dir="$consumer" --name=webrick/consumer-php84 --type=project --no-interaction
+          composer config --working-dir="$consumer" minimum-stability dev
+          composer config --working-dir="$consumer" repositories.local path "$package"
+          composer require --working-dir="$consumer" --no-update "infocyph/webrick:*"
+          composer update --working-dir="$consumer" --no-dev --no-interaction --no-progress --prefer-dist
+          test ! -d "$consumer/vendor/infocyph/pathwise"
+          php -r '
+          require $argv[1] . "/vendor/autoload.php";
+          $middleware = new \Infocyph\Webrick\Middleware\RiskAdmissionMiddleware(
+              static fn(): \Infocyph\Webrick\Middleware\RiskDecision
+                  => \Infocyph\Webrick\Middleware\RiskDecision::allow(),
+          );
+          $response = $middleware(
+              \Infocyph\Webrick\Request\Request::fake(),
+              static fn(): \Infocyph\Webrick\Response\Response
+                  => \Infocyph\Webrick\Response\Response::plaintext("ok", 200),
+          );
+          if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== "ok") {
+              throw new RuntimeException("PHP 8.4 no-dev archive consumer smoke failed.");
+          }
+          if (class_exists(\Infocyph\Pathwise\Storage\StorageContext::class)) {
+              throw new RuntimeException("Pathwise must remain optional in PHP 8.4.");
+          }
+          ' "$consumer"

@@ -24,6 +24,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \Throwable
      */
     public function handle(Request $req, Closure $next): Response
     {
@@ -46,7 +47,7 @@ final readonly class OpenTelemetryHandler
             $this->addResponseAttributes($span, $resp);
             $this->setSpanStatus($span, $resp->getStatusCode());
 
-            $durMs = (hrtime(true) - $startNs) / 1e6;
+            $durMs = (hrtime(true) - $startNs) / 1_000_000;
             $resp = TelemetrySupport::addTimingHeaders(
                 $resp,
                 $this->options->addXResponseTime,
@@ -87,6 +88,7 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /** @throws \InvalidArgumentException */
     private function addCorrelationHeaders(Response $resp, string $traceId, ?string $requestId): Response
     {
         return TelemetrySupport::addCorrelationHeaders(
@@ -100,6 +102,9 @@ final readonly class OpenTelemetryHandler
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function addCustomAttributes(object $span, Request $req): void
     {
         $routeName = $req->getAttribute('route.name');
@@ -129,6 +134,9 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function addNetworkAttributes(object $span, Request $req): void
     {
         $clientIp = TelemetrySupport::stringFromMixed($req->getAttribute('client_ip'));
@@ -150,6 +158,10 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     private function addResponseAttributes(object $span, Response $resp): void
     {
         $this->setSpanAttribute($span, 'http.status_code', $resp->getStatusCode());
@@ -163,6 +175,10 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     private function addSpanAttributes(object $span, Request $req): void
     {
         $this->setSpanAttribute($span, 'http.method', $req->getMethod());
@@ -199,6 +215,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function call(object $target, string $method, array $args = []): mixed
     {
@@ -211,6 +228,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callObject(object $target, string $method, array $args = []): object
     {
@@ -224,10 +242,11 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callStatic(string $class, string $method, array $args = []): mixed
     {
-        if (!method_exists($class, $method)) {
+        if (!class_exists($class) || !method_exists($class, $method)) {
             throw new RuntimeException(sprintf('Static method %s::%s() not available.', $class, $method));
         }
 
@@ -236,6 +255,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param list<mixed> $args
+     * @throws \RuntimeException
      */
     private function callStaticObject(string $class, string $method, array $args = []): object
     {
@@ -247,6 +267,7 @@ final readonly class OpenTelemetryHandler
         return $result;
     }
 
+    /** @throws \InvalidArgumentException */
     private function deriveRequestId(Request $req): ?string
     {
         return TelemetrySupport::deriveRequestId(
@@ -259,6 +280,7 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @return array{0:string,1:string}
+     * @throws \RuntimeException
      */
     private function extractTraceContext(object $span): array
     {
@@ -277,12 +299,15 @@ final readonly class OpenTelemetryHandler
     {
         $carrier = [];
         foreach ($req->getHeaders() as $name => $values) {
-            $carrier[strtolower((string) $name)] = $values[0] ?? '';
+            $carrier[strtolower($name)] = $values[0] ?? '';
         }
 
         return $carrier;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelIntConstant(string $name, int $fallback, string $label): int
     {
         if (!defined($name)) {
@@ -296,16 +321,25 @@ final readonly class OpenTelemetryHandler
         return $value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelSpanKindServer(): int
     {
         return $this->otelIntConstant(self::OTEL_SPAN_KIND_SERVER, 1, 'OpenTelemetry SpanKind::KIND_SERVER');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelStatusError(): int
     {
         return $this->otelIntConstant(self::OTEL_STATUS_ERROR, 2, 'OpenTelemetry StatusCode::STATUS_ERROR');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function otelStatusOk(): int
     {
         return $this->otelIntConstant(self::OTEL_STATUS_OK, 1, 'OpenTelemetry StatusCode::STATUS_OK');
@@ -313,12 +347,16 @@ final readonly class OpenTelemetryHandler
 
     /**
      * @param bool|int|float|string|array<int|string,mixed>|null $value
+     * @throws \RuntimeException
      */
     private function setSpanAttribute(object $span, string $key, bool|int|float|string|array|null $value): void
     {
         $this->call($span, 'setAttribute', [$key, $value]);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function setSpanStatus(object $span, int $statusCode): void
     {
         $series = StatusEnum::tryFrom($statusCode)?->series() ?? intdiv($statusCode, 100);
@@ -334,6 +372,9 @@ final readonly class OpenTelemetryHandler
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function startServerSpan(Request $req, int $startNs): object
     {
         if (!class_exists(self::OTEL_GLOBALS)) {

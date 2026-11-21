@@ -25,19 +25,36 @@ final readonly class RouteCacheBuildRegistrarCallback
         private ?string $signKey,
     ) {}
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function __invoke(Registrar $registrar): void
     {
         if (is_callable($this->userRegister)) {
             ($this->userRegister)($registrar);
         } elseif ($this->routesFile !== '') {
+            // Route sources are executable PHP. Reject wrappers before is_file() or require.
+            if (
+                str_contains($this->routesFile, "\0")
+                || str_starts_with($this->routesFile, '//')
+                || str_starts_with($this->routesFile, '\\\\')
+                || preg_match('~^[a-z][a-z0-9.+-]*://~i', $this->routesFile) === 1
+            ) {
+                throw new \InvalidArgumentException('Routes file must be a local filesystem path.');
+            }
             if (!is_file($this->routesFile)) {
                 throw new \RuntimeException("Routes file not found: {$this->routesFile}");
             }
 
-            $registrarForFile = $registrar;
-            $logger = $this->logger;
-            $baseDir = $this->baseDir;
-            $signKey = $this->signKey;
+            // Export only the fixed legacy bindings; route source never supplies variable names.
+            extract([
+                'registrarForFile' => $registrar,
+                'logger' => $this->logger,
+                'baseDir' => $this->baseDir,
+                'signKey' => $this->signKey,
+            ], EXTR_SKIP);
             require $this->routesFile;
         }
 

@@ -132,13 +132,16 @@ final class HttpUtils
         $digits = ltrim($value, '0');
         $parsed = filter_var($digits === '' ? '0' : $digits, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
-        return $parsed === false ? null : (int) $parsed;
+        return $parsed === false ? null : $parsed;
     }
 
-    /** @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element. */
+    /**
+     * @return list<string>|null Null means malformed quoted-string syntax or a rejected empty element.
+     * @throws \InvalidArgumentException
+     */
     public static function splitQuoted(string $raw, string $delimiter, bool $rejectEmpty = false): ?array
     {
-        if (strlen($delimiter) !== 1) {
+        if ($delimiter === '' || strlen($delimiter) !== 1) {
             throw new \InvalidArgumentException('HTTP list delimiter must be exactly one character.');
         }
 

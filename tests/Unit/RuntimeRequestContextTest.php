@@ -8,6 +8,9 @@ use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestContext;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestExecution;
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function runtime_test_context(string $id, object $native): RuntimeRequestContext
 {
     return new RuntimeRequestContext(
@@ -59,15 +62,25 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
 
     $fiberA = new Fiber(static function () use ($a): string {
         $before = $a->request()->query('id');
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
-        return $before . ':' . $a->request()->query('id');
+        $after = $a->request()->query('id');
+        if (!is_string($before) || !is_string($after)) {
+            throw new UnexpectedValueException('Expected string query values in fiber A.');
+        }
+
+        return $before . ':' . $after;
     });
     $fiberB = new Fiber(static function () use ($b): string {
         $before = $b->request()->query('id');
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
-        return $before . ':' . $b->request()->query('id');
+        $after = $b->request()->query('id');
+        if (!is_string($before) || !is_string($after)) {
+            throw new UnexpectedValueException('Expected string query values in fiber B.');
+        }
+
+        return $before . ':' . $after;
     });
 
     $fiberA->start();
@@ -80,18 +93,17 @@ test('interleaved fibers do not cross contaminate runtime requests', function ()
 });
 
 test('runtime execution metadata stays request local and observes authoritative cancellation live', function (): void {
-    $cancelled = false;
-    $reason = null;
+    $state = new class {
+        public bool $cancelled = false;
+
+        public ?string $reason = null;
+    };
     $execution = new RuntimeRequestExecution(
         requestId: 'runtime-request-42',
         startMonotonicNanoseconds: 1_000,
         deadlineMonotonicNanoseconds: 5_000,
-        cancelled: static function () use (&$cancelled): bool {
-            return $cancelled;
-        },
-        cancellationReason: static function () use (&$reason): ?string {
-            return $reason;
-        },
+        cancelled: static fn(): bool => $state->cancelled,
+        cancellationReason: static fn(): ?string => $state->reason,
     );
     $context = new RuntimeRequestContext(
         new RoutingInput('GET', '/execution'),
@@ -121,8 +133,8 @@ test('runtime execution metadata stays request local and observes authoritative 
         ->and($context->capabilities->cancellationVisibility)->toBeTrue()
         ->and($context->capabilities->transportDrainVisibility)->toBeTrue();
 
-    $cancelled = true;
-    $reason = 'client-disconnected';
+    $state->cancelled = true;
+    $state->reason = 'client-disconnected';
 
     expect($execution->cancelled())->toBeTrue()
         ->and($execution->cancellationReason())->toBe('client-disconnected');

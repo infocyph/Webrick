@@ -13,6 +13,9 @@ final readonly class IpCidr
         private int $bytes,
     ) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function from(string $cidr): self
     {
         $cidr = trim($cidr);

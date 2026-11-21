@@ -40,6 +40,8 @@ final class AttributeRouteLoader
      * Fast path: if you already know the FQCNs, this is the most efficient route.
      *
      * @param list<class-string> $classes
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function register(Registrar $registrar, array $classes): void
     {
@@ -59,6 +61,9 @@ final class AttributeRouteLoader
      *
      * @param array<string,string> $roots e.g. ['App\\Http\\Controllers\\' => __DIR__.'/app/Http/Controllers']
      * @param null|callable(SplFileInfo):bool $filter optional file filter (return true to include the file)
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function registerFromDirs(Registrar $registrar, array $roots, ?callable $filter = null): void
     {
@@ -106,6 +111,7 @@ final class AttributeRouteLoader
      * @param array<string,string> $roots
      * @param null|callable(SplFileInfo):bool $filter
      * @return list<class-string>
+     * @throws \RuntimeException
      */
     private static function collectAnnotatedClasses(array $roots, ?callable $filter): array
     {
@@ -124,6 +130,7 @@ final class AttributeRouteLoader
     /**
      * @param null|callable(SplFileInfo):bool $filter
      * @return list<class-string>
+     * @throws \RuntimeException
      */
     private static function collectRootClasses(string $nsPrefix, string $dir, ?callable $filter): array
     {
@@ -169,6 +176,9 @@ final class AttributeRouteLoader
      *   middleware:list<class-string|object>,
      *   attributes:array{produces?:Produces,cors?:Cors}
      * } $opts
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function emitRoutes(
         Registrar $r,
@@ -218,11 +228,16 @@ final class AttributeRouteLoader
 
     /**
      * Try Composer autoload first; if that fails, include the file directly.
+     * @throws \RuntimeException
      */
     private static function loadClassIfNeeded(SplFileInfo $file, string $fqcn): void
     {
         if (!class_exists($fqcn, true)) { // true → allow autoload
-            require_once $file->getPathname();
+            $path = $file->getPathname();
+            if (!is_file($path)) {
+                throw new \RuntimeException('Attribute route source file is missing.');
+            }
+            require_once $path;
         }
     }
 
@@ -246,7 +261,6 @@ final class AttributeRouteLoader
         if (!$a) {
             return ['', null, [], ''];
         }
-        /** @var Group $g */
         $g = $a->newInstance();
 
         return [$g->prefix ?: '', $g->domain, $g->middleware, $g->name ?: ''];
@@ -260,7 +274,6 @@ final class AttributeRouteLoader
     {
         $out = [];
         foreach ($ref->getAttributes(Middleware::class, ReflectionAttribute::IS_INSTANCEOF) as $a) {
-            /** @var Middleware $m */
             $m = $a->newInstance();
             array_push($out, ...$m->stack);
         }
@@ -279,6 +292,8 @@ final class AttributeRouteLoader
     /* ───────────────────────────── Registration ─────────────────────────────── */
     /**
      * @param class-string $fqcn
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function registerClass(Registrar $registrar, string $fqcn): void
     {
@@ -306,6 +321,9 @@ final class AttributeRouteLoader
     /**
      * @param ReflectionClass<object> $rc
      * @param class-string $fqcn
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private static function registerPublicMethods(
         Registrar $r,
@@ -325,9 +343,8 @@ final class AttributeRouteLoader
             $methCors = self::readCors($rm) ?? $classCors;
 
             foreach ($routeAttrs as $attr) {
-                /** @var Route $rAttr */
                 $rAttr = $attr->newInstance();
-                $methods = array_values(array_map(strtoupper(...), (array) $rAttr->method));
+                $methods = array_values(array_map(strtoupper(...), $rAttr->method));
                 $opts = self::buildOptions($rAttr, $methodMw, $methProd, $methCors);
                 /** @var array{0:class-string,1:non-empty-string} $handler */
                 $handler = [$fqcn, $rm->getName()];

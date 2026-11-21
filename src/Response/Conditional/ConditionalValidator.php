@@ -22,6 +22,9 @@ final readonly class ConditionalValidator
         private ?bool $representationExists = null,
     ) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function evaluate(Request $req): Outcome
     {
         $echo = $this->buildEchoHeaders();
@@ -46,6 +49,9 @@ final readonly class ConditionalValidator
         return new Outcome(Outcome::PASS, 0, $echo);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isRangeFresh(Request $req): bool
     {
         $ifRange = trim($req->getHeaderLine('If-Range'));
@@ -104,6 +110,9 @@ final readonly class ConditionalValidator
         return false;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function failsIfMatch(Request $req): bool
     {
         $candidates = $this->tokenize($req->getHeaderLine('If-Match'));
@@ -117,6 +126,9 @@ final readonly class ConditionalValidator
         return $this->etag === null || !$this->etagEquals($this->etag, $candidates, true);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function failsIfUnmodSince(Request $req): bool
     {
         if ($this->lastModified === null) {
@@ -127,6 +139,9 @@ final readonly class ConditionalValidator
         return $since !== null && $this->lastModified > $since;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hitsIfModSince(Request $req): bool
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -141,6 +156,9 @@ final readonly class ConditionalValidator
         return $since !== null && $this->lastModified <= $since;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hitsIfNoneMatch(Request $req): bool
     {
         $candidates = $this->tokenize($req->getHeaderLine('If-None-Match'));
@@ -168,7 +186,10 @@ final readonly class ConditionalValidator
         return $this->etag !== null || $this->lastModified !== null ? true : null;
     }
 
-    /** @return list<string>|null */
+    /**
+     * @return list<string>|null
+     * @throws \InvalidArgumentException
+     */
     private function tokenize(string $list): ?array
     {
         if ($list === '') {

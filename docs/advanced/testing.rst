@@ -3,6 +3,148 @@ Testing Guide
 
 Comprehensive testing strategies for Webrick applications.
 
+Repository quality gates
+------------------------
+
+Run ``composer ic:ci`` for the shared PHPForge gates and
+``composer ic:tests:details`` for their detailed local output. Security & Standards
+owns the hosted diagnostics; Webrick does not maintain a second diagnostics job
+or a local Psalm XML configuration.
+
+``composer.json`` defines a default-deny ``extra.phpforge.skipper_policy``.
+Its reviewed contracts cover header validation, shard filename components and
+operator-selected certification filesystem paths. Certification path authority
+comes exclusively from CLI arguments or the test server's host environment;
+these helpers must never authorize HTTP request paths or serve as URL encoders.
+File contents retain their data taints. Production uploads and file APIs do not
+receive a filesystem-taint exemption.
+
+Each sanitizer permission names exact taint categories, its source SHA-256 and
+regression tests. Changes to that source deliberately fail the directive gate;
+review the implementation, dependencies and tests before updating the digest.
+Do not refresh evidence hashes automatically.
+
+Two statement-level Psalm 7.10 exceptions preserve required Fiber behavior:
+``UnusedVariable`` misses the escaped drain callback's reference to the cleared
+continuation, and ``UnusedMethodCall`` misclassifies ``Fiber::suspend()``.
+The lifecycle tests verify reference release, pressure and cancellation. Remove
+the exceptions when upstream analysis recognizes those effects. The upload
+getter uses an explicit declaring scope to avoid inherited magic-property taint
+being confused with private upload storage; actual input taints remain tracked.
+
+The constant-local ``MissingClassConstType`` compatibility policy covers
+``BaseEmitter``'s two protected constants and ``Request``'s five public proxy
+flags. PHP rejects previously valid untyped subclass overrides if the parent gains
+native constant types. The legacy emitter and request-extension regressions check
+this contract. Remove the exceptions when the analyzer supports it, or reconsider
+native types only in an explicitly breaking release.
+
+Runtime release certification
+-----------------------------
+
+For the Webrick 6.1 ``feature/risk-admission`` development branch,
+the full load/soak workflow is deliberately deferred until final readiness:
+intermediate commits run Security & Standards, Sphinx and functional checks.
+The PHPForge benchmark matrix is also deferred on intermediate pull requests
+without disabling PHPForge's QA, PHPStan, Psalm, taint analysis, security, or
+package checks. On the final candidate SHA, manually invoke
+``Security & Standards`` with ``workflow_dispatch`` to run the full
+PHPForge benchmark matrix, and require its success. Scheduled and main-branch
+runs retain normal benchmark coverage.
+
+After all non-performance work passes at the final SHA, invoke
+``Runtime Release Certification`` via GitHub Actions
+``workflow_dispatch`` on that exact branch and require every SAPI/Runwire
+performance aggregation and protocol/soak job to pass. Do not treat
+the deferral as a waived release gate or lower the budgets.
+
+The existing ``.github/certification/load-benchmark.sh`` harness measures ten
+ordinary workloads and six protected workloads: deterministic admission, Redis
+counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,
+and bounded synthetic provider latency. Baseline uses ordinary host middleware;
+candidate uses ``RiskAdmissionMiddleware`` with the same host policy and account
+lookup. Wrong-password responses are measured separately from successful logins.
+Persistent Runwire workers reuse an immutable middleware binding per protected
+workload. PHP-FPM constructs the binding within each request's PHP lifecycle.
+Both runtimes evaluate each request afresh.
+
+Supply an isolated, unauthenticated loopback Redis service through
+``IC_REDIS_HOST=127.0.0.1`` and ``IC_REDIS_PORT``. The hosted jobs provision their
+own service. Performance collectors connect directly over loopback, so
+short-lived connections do not carry over through a Docker published port.
+The fixture uses synthetic credentials and must never use production Redis.
+Its routes and forced decisions are certification tools, excluded from
+the distributed package. Its seeded clearance and delayed provider are workload
+fixtures, not production issuance or live CAPTCHA verification.
+
+The gate runs three warmed trials at concurrency 1, 5, 20 and 50, with
+384 required rows and 64 comparisons per runtime mode. Samples normally run for
+10 seconds. Runwire tests of bcrypt at concurrency 20 and 50 use at least
+30 seconds to collect more completed requests for the p99 comparison. Budgets remain
+2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
+The SAPI lane sends HTTP through Nginx to a two-worker PHP-FPM pool with OPcache.
+The Runwire lane uses its optional native HTTP worker. Each concurrency has its
+own runner and Redis fixture, and each workload is measured as an adjacent
+baseline and candidate pair. The hosted collector assigns distinct CPUs to
+the server, load generator, and observer with Redis, and records their affinity.
+All four concurrency artifacts
+must have matching commit, runtime and dependency provenance before aggregation.
+Dependency preparation captures the PHP CLI and FPM executables, extension modules and INI
+configuration in the current-run artifact. Each load shard restores and verifies
+that runtime, including reruns; the installer's moving minor-version selection
+cannot change only one shard's PHP patch. Mixed patch-version evidence remains
+a hard failure.
+The unchanged full-matrix analyzer rejects missing or duplicate rows and enforces
+every budget. This preserves the 64 minutes of total load per mode while reducing
+the load critical path to 16 minutes plus setup. The separate 30-minute soak runs
+in parallel and remains the floor for complete certification; runner queues and
+setup add elapsed time.
+Load threads divide the requested connection count exactly: 1, 1, 4 and 2 threads
+respectively. Bcrypt/login and delayed-provider workloads use one client event
+loop with the full connection count. This avoids low-rate client-thread latency
+cohorts without reducing application pressure, sample duration or trial count.
+A live socket regression counts actual HTTP connections; wrk's banner alone
+cannot detect rounded-down concurrency.
+Bcrypt workloads use a 10-second client deadline so queued CPU work can be
+measured; ordinary workloads retain their existing deadline. Every complete
+response must validate. Missing evidence, transport errors and unexpected worker
+exits, unhealthy events or restarts fail the gate; worker events are retained on
+early collector failure too.
+Post-load telemetry must show drained queues and requests within the workload's
+existing client deadline: two seconds for ordinary workloads, ten seconds for
+bcrypt workloads. The control probe queues behind legitimate in-flight work on
+busy PHP-FPM or Runwire workers; it must share that deadline. All settling samples are
+retained. This wait does not alter measured latency, throughput, transport
+errors or in-load RSS peaks. Invalid telemetry, persistent leaked state and
+worker restarts still fail certification.
+
+The 30-minute persistent-worker soak also exercises shared counters, clearance
+consumption and real password verification alongside the ordinary routes,
+deliberate cancellation and planned recycling. Short collector/soak smoke runs
+validate the harness and cannot replace release qualification.
+Final drain checks prime and refresh diagnostics on both live workers before
+checking their queues within the ordinary two-second control deadline. Runwire's
+queue gauge is sampled after request completion; idle time alone does not refresh
+it. All settling observations and lifecycle events are retained on failure too.
+
+The performance reference is trusted ``main`` plus the reviewed cancellation-only
+backport in ``baseline-cancellation.diff``. The old adapter lets asynchronous
+transport cancellation escape and kills workers; it cannot provide a valid
+performance control. ``prepare-baseline.sh`` verifies pinned source and patch
+hashes, rejects unrelated tracked edits and unknown source, and preserves Git
+HEAD. The reference runs the candidate's cancellation regression tests before
+load. Both original and measured source, hashes and normalization state are
+published with the results and identified in the workflow summary. This measures
+against corrected main; it does not certify unpatched main. Once main contains a
+recognized correction, no patch is applied. Any other adapter revision requires
+review and renewed pins. Dependency equivalence and every existing correctness,
+worker-lifecycle and performance gate remain mandatory.
+
+The local provider HTTP tests exercise configurable endpoints, strict reply
+binding, bounded bodies, 4xx/5xx responses, redirects and timeouts without a retry.
+Deployment acceptance still requires the selected live CAPTCHA provider, trusted
+edge policy and authoritative store durability/failover configuration.
+
 --------------
 
 Test Pyramid

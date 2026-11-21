@@ -1,30 +1,39 @@
 name: Runtime Release Certification
 
+# The Webrick 6.1 release candidate runs full performance certification only
+# after all non-performance QA passes. No budget or certification job is waived.
 on:
+  workflow_call:
+    inputs:
+      aa_control:
+        description: Run identical-source A/A diagnostics, never a release comparison
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - feature/runwire
+      - feature/risk-admission
+    # Reserve long certification for changes that can affect runtime behavior.
+    # Documentation/tracker-only and unrelated CI changes still receive PR QA.
+    # Final exact-SHA certification is always available via workflow_dispatch.
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "composer.json"
+      - "composer.lock"
+      - ".github/certification/**"
   workflow_dispatch:
     inputs:
-      baseline_ref:
-        description: Webrick baseline ref for same-run comparison
-        required: true
-        default: "6.0"
-        type: string
-      candidate_ref:
-        description: Candidate ref; leave empty to certify the dispatched SHA
-        required: false
-        default: ""
-        type: string
       duration_seconds:
         description: Seconds per steady-state HTTP load trial
         required: true
         default: "10"
         type: string
       trials:
-        description: Steady-state trials per workload/concurrency
+        description: Crossed paired trials per workload/concurrency (4, 8, or 12)
         required: true
-        default: "3"
+        default: "4"
         type: string
       soak_minutes:
         description: Persistent-worker soak duration in minutes
@@ -56,7 +65,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.aa_control && 'aa' || 'release' }}
   cancel-in-progress: true
 
 defaults:
@@ -65,14 +74,17 @@ defaults:
 
 jobs:
   live-runwire-h1-h2:
+    if: ${{ !inputs.aa_control }}
     name: Live Runwire H1/H2
+    needs: performance-dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Check out candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up PHP
@@ -83,9 +95,24 @@ jobs:
 
       - name: Install certification tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq nghttp2-client openssl
-          composer install --no-interaction --no-progress --prefer-dist
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y curl jq nghttp2-client openssl; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
       - name: Build certification artifacts
         run: php .github/certification/cert-server.php prepare --root="$PWD"
@@ -168,57 +195,218 @@ jobs:
 
       - name: Upload live protocol evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: live-runwire-h1-h2
           path: .runtime-certification/
           if-no-files-found: error
           include-hidden-files: true
 
-  same-run-performance:
-    name: Webrick baseline vs candidate HTTP performance (${{ matrix.mode }})
+  performance-dependencies:
+    name: Prepare shared performance dependencies
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [sapi, runwire]
+    timeout-minutes: 15
+    outputs:
+      baseline_sha: ${{ steps.reference.outputs.sha }}
     steps:
       - name: Check out candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           path: candidate
-          fetch-depth: 0
 
-      - name: Check out baseline
-        uses: actions/checkout@v4
+      - name: Check out release baseline or identical-source A/A control
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.baseline_ref || '6.0' }}
+          persist-credentials: false
+          ref: ${{ inputs.aa_control && github.sha || 'main' }}
           path: baseline
-          fetch-depth: 0
+
+      - name: Pin prepared baseline revision
+        id: reference
+        run: echo "sha=$(git -C baseline rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.5"
           coverage: none
+          extensions: redis
 
-      - name: Install load tools and dependencies
+      - name: Verify A/A mode selection and source guards
+        run: bash candidate/.github/certification/test-load-source-control.sh
+
+      - name: Capture the exact PHP runtime for all load shards
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq wrk
-          composer install --working-dir=candidate --no-interaction --no-progress --prefer-dist
-          composer install --working-dir=baseline --no-interaction --no-progress --prefer-dist
+          if ! command -v php-fpm8.5 >/dev/null; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y php8.5-fpm
+          fi
+          bash candidate/.github/certification/test-prepared-php.sh "$(command -v php-fpm8.5)"
+          bash candidate/.github/certification/prepared-php.sh capture prepared-php "$(command -v php-fpm8.5)"
 
-      - name: Verify in-load RSS sampling and failure propagation
-        run: bash candidate/.github/certification/test-load-rss-sampler.sh
+      - name: Install the two dependency trees once
+        run: |
+          for checkout in candidate baseline; do
+            for attempt in 1 2 3; do
+              if composer install --working-dir="$checkout" --no-interaction --no-progress --prefer-dist; then
+                break
+              fi
+              if (( attempt == 3 )); then
+                exit 1
+              fi
+              sleep "$((attempt * 5))"
+            done
+          done
+          tar -czf performance-dependencies.tar.gz candidate/vendor candidate/composer.lock baseline/vendor baseline/composer.lock prepared-php
+
+      - name: Publish current-run dependency trees
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-dependencies
+          path: performance-dependencies.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  same-run-performance:
+    name: HTTP performance (${{ matrix.mode }}, c${{ matrix.concurrency }})
+    needs: performance-dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        mode: [sapi, runwire]
+        concurrency: [1, 5, 20, 50]
+    env:
+      CERT_MODE: ${{ matrix.mode }}
+      CERT_CONCURRENCY: ${{ matrix.concurrency }}
+      CERT_AA_CONTROL: ${{ inputs.aa_control && '1' || '0' }}
+      IC_REDIS_HOST: 127.0.0.1
+      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '4' }}
+      CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
+      CERT_RUNWIRE_TAIL_SECONDS: '30'
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: candidate
+          fetch-depth: 0
+
+      - name: Check out release baseline or identical-source A/A control
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.aa_control && github.sha || 'main' }}
+          path: baseline
+          fetch-depth: 0
+
+      - name: Verify prepared baseline or A/A control matches shared dependencies
+        env:
+          PREPARED_BASELINE_SHA: ${{ needs.performance-dependencies.outputs.baseline_sha }}
+        run: |
+          if [[ "$(git -C baseline rev-parse HEAD)" != "$PREPARED_BASELINE_SHA" ]]; then
+            echo "Reference changed after dependency preparation; rerun with a consistent source SHA." >&2
+            exit 1
+          fi
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+          extensions: redis
+
+      - name: Install load tools with bounded mirror retries
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get install -y curl jq wrk nginx; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Download the prepared dependency trees
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore prepared dependencies and locks
+        run: |
+          tar -xzf .performance-dependencies/performance-dependencies.tar.gz
+          bash candidate/.github/certification/prepared-php.sh activate "$PWD/prepared-php"
+          echo "$PWD/prepared-php/bin" >> "$GITHUB_PATH"
+          echo "PHPRC=$PWD/prepared-php/php.ini" >> "$GITHUB_ENV"
+          echo "PHP_INI_SCAN_DIR=$PWD/prepared-php/ini" >> "$GITHUB_ENV"
+
+      - name: Certify comparable installed runtime dependencies
+        run: |
+          mkdir -p cert-results
+          {
+            printf 'baseline_sha=%s\n' "$(git -C baseline rev-parse HEAD)"
+            printf 'candidate_sha=%s\n' "$(git -C candidate rev-parse HEAD)"
+            printf 'php_version=%s\n' "$(php -r 'echo PHP_VERSION;')"
+            printf 'benchmark_mode=%s\n' "$CERT_MODE"
+            printf 'benchmark_concurrency=%s\n' "$CERT_CONCURRENCY"
+            if [[ "$CERT_MODE" == sapi ]]; then
+              printf 'php_fpm_version=%s\n' "$(php-fpm -v | sed -n '1p')"
+              printf 'http_frontend=%s\n' "$(nginx -v 2>&1)"
+            fi
+          } | tee cert-results/environment.txt
+          for package in infocyph/runwire infocyph/intermix; do
+            baseline_version="$(composer --working-dir=baseline show --format=json "$package" | jq -er '.versions[0]')"
+            candidate_version="$(composer --working-dir=candidate show --format=json "$package" | jq -er '.versions[0]')"
+            printf '%s baseline=%s candidate=%s\n' "$package" "$baseline_version" "$candidate_version" | tee -a cert-results/environment.txt
+            if [[ "$baseline_version" != "$candidate_version" ]]; then
+              echo "::error::Benchmark runtime version mismatch for $package: baseline=$baseline_version candidate=$candidate_version; use a comparable baseline, do not waive performance budgets"
+              exit 1
+            fi
+          done
+
+      - name: Verify reference preparation and collector failure propagation
+        run: |
+          bash candidate/.github/certification/test-prepare-baseline.sh
+          bash candidate/.github/certification/test-load-rss-sampler.sh
+          bash candidate/.github/certification/test-load-worker-events.sh
+          bash candidate/.github/certification/test-load-metrics.sh
+          bash candidate/.github/certification/test-load-pairing.sh
+          python3 candidate/.github/certification/test-load-concurrency.py
+          python3 candidate/.github/certification/test-merge-load-shards.py
+
+      - name: Prepare explicitly corrected performance reference
+        if: ${{ !inputs.aa_control }}
+        run: |
+          bash candidate/.github/certification/prepare-baseline.sh "$PWD/baseline" "$PWD/cert-results"
+
+      - name: Prove source-identical A/A baseline and candidate
+        if: ${{ inputs.aa_control }}
+        run: |
+          test "$(git -C baseline rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$GITHUB_SHA"
+          cmp baseline/composer.lock candidate/composer.lock
+          printf 'measurement=identical-source-aa\nadmission=middleware-both\nsource_sha=%s\n' "$GITHUB_SHA" \
+            | tee -a cert-results/environment.txt
+
+      - name: Verify cancellation regressions against measured reference
+        working-directory: baseline
+        run: |
+          vendor/bin/pest --configuration=vendor/infocyph/phpforge/resources/pest.xml \
+            --bootstrap=vendor/autoload.php \
+            ../candidate/tests/Unit/RunwireRuntimeApplicationTest.php --fail-on-skipped --compact
 
       - name: Prove analyzer rejects incomplete evidence
         run: |
           mkdir -p analyzer-negative
-          mode="${{ matrix.mode }}"
-          trials="${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"
+          mode="$CERT_MODE"
+          trials="$CERT_TRIALS"
 
           expect_reject() {
             local input="$1"
@@ -246,32 +434,75 @@ jobs:
 
       - name: Run controlled same-run load matrix
         run: |
-          mkdir -p cert-results
-          bash candidate/.github/certification/load-benchmark.sh             "$PWD/baseline"             "$PWD/candidate"             "$PWD/cert-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}"             "${{ matrix.mode }}"
+          IFS=, read -ra cpu_ranges < <(awk '$1 == "Cpus_allowed_list:" {print $2}' /proc/self/status)
+          cpus=()
+          for range in "${cpu_ranges[@]}"; do
+            first="${range%%-*}"
+            last="${range##*-}"
+            for ((cpu=first; cpu<=last; ++cpu)); do cpus+=("$cpu"); done
+          done
+          if (( ${#cpus[@]} < 3 )); then
+            echo 'Certification needs distinct CPUs for the server, load client and observer.' >&2
+            exit 1
+          fi
+          export CERT_SERVER_CPUS="${cpus[2]}"
+          export CERT_LOAD_CPUS="${cpus[1]}"
+          observer_cpu="${cpus[0]}"
+          if (( ${#cpus[@]} >= 4 )); then
+            CERT_SERVER_CPUS+=",${cpus[3]}"
+          fi
+          printf 'server_cpus=%s\nload_cpu=%s\nobserver_and_redis_cpu=%s\n' \
+            "$CERT_SERVER_CPUS" "$CERT_LOAD_CPUS" "$observer_cpu" > cert-results/cpu-roles.txt
 
-      - name: Enforce performance budgets
-        run: |
-          php candidate/.github/certification/analyze-load.php             --input="$PWD/cert-results/load-results.jsonl"             --summary="$PWD/cert-results/summary.md"             --json="$PWD/cert-results/comparison.json"             --profile="${{ matrix.mode }}"             --trials="${{ github.event_name == 'workflow_dispatch' && inputs.trials || '3' }}"             --throughput-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}"             --p99-regression-percent="${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}"             --memory-regression-mb="${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
-          cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          # Direct loopback avoids connection carryover through Docker's published port.
+          IC_REDIS_PORT="$(php -r '$socket = stream_socket_server("tcp://127.0.0.1:0"); if ($socket === false) exit(1); echo substr(strrchr(stream_socket_get_name($socket, false), ":"), 1);')"
+          export IC_REDIS_PORT
+          redis="$(docker run --detach --rm --network host --cpuset-cpus="$observer_cpu" redis:7-alpine \
+            --bind 127.0.0.1 --protected-mode yes --port "$IC_REDIS_PORT" --save '' --appendonly no)"
+          trap 'docker stop "$redis" >/dev/null' EXIT
+          for attempt in {1..50}; do
+            if [[ "$(docker exec "$redis" redis-cli -p "$IC_REDIS_PORT" ping 2>/dev/null)" == PONG ]]; then
+              break
+            fi
+            sleep 0.1
+          done
+          [[ "$(docker exec "$redis" redis-cli -p "$IC_REDIS_PORT" ping)" == PONG ]]
+          taskset -c "$observer_cpu" bash candidate/.github/certification/load-benchmark.sh \
+            "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
+            "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE" "$CERT_CONCURRENCY" \
+            "$CERT_RUNWIRE_TAIL_SECONDS"
 
       - name: Upload performance evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: webrick-baseline-vs-candidate-http-${{ matrix.mode }}
+          name: webrick-http-${{ matrix.mode }}-c${{ matrix.concurrency }}
           path: cert-results/
           if-no-files-found: error
 
-  persistent-worker-soak:
-    name: Persistent Runwire worker soak
+  performance-budgets:
+    name: Complete HTTP performance budgets (${{ matrix.mode }})
+    needs: same-run-performance
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sapi, runwire]
+    env:
+      CERT_MODE: ${{ matrix.mode }}
+      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '4' }}
+      CERT_THROUGHPUT_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}
+      CERT_P99_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}
+      CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
+      CERT_CANDIDATE_SHA: ${{ github.sha }}
     steps:
-      - name: Check out candidate
-        uses: actions/checkout@v4
+      - name: Check out analyzer
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
-          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -279,38 +510,130 @@ jobs:
           php-version: "8.5"
           coverage: none
 
+      - name: Download all concurrency evidence
+        uses: actions/download-artifact@v8
+        with:
+          pattern: webrick-http-${{ matrix.mode }}-c*
+          path: shards
+
+      - name: Merge matching shards and enforce complete-matrix budgets
+        run: |
+          python3 .github/certification/merge-load-shards.py shards cert-results "$CERT_MODE" "$CERT_CANDIDATE_SHA"
+          php .github/certification/analyze-load.php \
+            --input="$PWD/cert-results/load-results.jsonl" \
+            --summary="$PWD/cert-results/summary.md" \
+            --json="$PWD/cert-results/comparison.json" \
+            --profile="$CERT_MODE" --trials="$CERT_TRIALS" \
+            --throughput-regression-percent="$CERT_THROUGHPUT_PERCENT" \
+            --p99-regression-percent="$CERT_P99_PERCENT" \
+            --memory-regression-mb="$CERT_MEMORY_MB"
+
+      - name: Publish performance summary
+        if: always()
+        run: |
+          if [[ -f cert-results/summary.md ]]; then
+            cat cert-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload complete performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: webrick-baseline-vs-candidate-http-${{ matrix.mode }}
+          path: cert-results/
+          if-no-files-found: error
+
+  persistent-worker-soak:
+    if: ${{ !inputs.aa_control }}
+    name: Persistent Runwire worker soak
+    needs: performance-dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      WEBRICK_CERT_ADMISSION: middleware
+      IC_REDIS_HOST: 127.0.0.1
+      CERT_SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '30' }}
+      CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+          extensions: redis
+
       - name: Install soak dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq wrk
-          composer install --no-interaction --no-progress --prefer-dist
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y curl jq wrk; then
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
 
-      - name: Verify bounded HTTP batch ownership
-        run: bash .github/certification/test-soak-http-batch.sh
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
+
+      - name: Verify soak collector failure propagation
+        run: |
+          bash .github/certification/test-soak-http-batch.sh
+          bash .github/certification/test-soak-metrics.sh
 
       - name: Run persistent-worker soak
+        env:
+          IC_REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
           mkdir -p soak-results
-          bash .github/certification/run-soak.sh             "$PWD"             "$PWD/soak-results"             "${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '30' }}"             "${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}"
+          bash .github/certification/run-soak.sh \
+            "$PWD" "$PWD/soak-results" "$CERT_SOAK_MINUTES" "$CERT_MEMORY_MB"
           cat soak-results/soak-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload soak evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: persistent-runwire-soak
           path: soak-results/
           if-no-files-found: error
 
   live-runwire-h3:
+    if: ${{ !inputs.aa_control }}
     name: Live Runwire H3
+    needs: performance-dependencies
     runs-on: ubuntu-26.04
     timeout-minutes: 35
     steps:
       - name: Check out candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Install QUIC and HTTP/3 certification tools
@@ -320,8 +643,15 @@ jobs:
           mkdir -p .runtime-certification
           php -v > .runtime-certification/php-environment.txt
           openssl version >> .runtime-certification/php-environment.txt
-          sudo apt-get update
-          sudo apt-get install -y python3-aioquic jq openssl
+          for attempt in 1 2 3; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y python3-aioquic jq openssl; then
+              break
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
           curl -fL --output /tmp/pie https://github.com/php/pie/releases/latest/download/pie-Linux-X64
           gh attestation verify --owner php /tmp/pie
           chmod +x /tmp/pie
@@ -341,8 +671,14 @@ jobs:
           fwrite(STDOUT, PHP_VERSION . " " . OPENSSL_VERSION_TEXT . PHP_EOL);
           '
 
-      - name: Install candidate dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Download current-run dependencies
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-dependencies
+          path: .performance-dependencies
+
+      - name: Restore candidate dependencies and lock
+        run: tar -xzf .performance-dependencies/performance-dependencies.tar.gz --strip-components=1 candidate/vendor candidate/composer.lock
 
       - name: Build certification artifacts and TLS identity
         run: |
@@ -393,7 +729,7 @@ jobs:
 
       - name: Upload H3 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: live-runwire-h3
           path: .runtime-certification/
@@ -407,9 +743,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Assert prepared QUIC host
@@ -466,7 +803,7 @@ jobs:
 
       - name: Upload Linux H3 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: live-runwire-h3-linux
           path: .runtime-certification/

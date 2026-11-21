@@ -24,14 +24,14 @@ expect()->extend('toBeOne', function () {
 });
 
 expect()->extend('toHaveStatus', function (int $status) {
-    $actual = $this->value->getStatusCode();
+    $actual = webrickPestResponse($this->value)->getStatusCode();
     expect($actual)->toBe($status, "Expected status {$status}, got {$actual}");
 
     return $this;
 });
 
 expect()->extend('toHaveHeader', function (string $header) {
-    expect($this->value->hasHeader($header))->toBeTrue("Expected header '{$header}' to be present");
+    expect(webrickPestResponse($this->value)->hasHeader($header))->toBeTrue("Expected header '{$header}' to be present");
 
     return $this;
 });
@@ -43,59 +43,62 @@ expect()->extend('toHaveHeader', function (string $header) {
 */
 
 expect()->extend('toBeTraceId', function () {
-    expect($this->value)
-        ->toBeString('Trace ID must be a string')
+    $value = webrickPestString($this->value, 'Trace ID');
+    expect($value)
         ->toHaveLength(32, 'Trace ID must be 32 characters')
-        ->and(ctype_xdigit($this->value))->toBeTrue('Trace ID must be hexadecimal');
+        ->and(ctype_xdigit($value))->toBeTrue('Trace ID must be hexadecimal');
 
     return $this;
 });
 
 expect()->extend('toBeSpanId', function () {
-    expect($this->value)
-        ->toBeString('Span ID must be a string')
+    $value = webrickPestString($this->value, 'Span ID');
+    expect($value)
         ->toHaveLength(16, 'Span ID must be 16 characters')
-        ->and(ctype_xdigit($this->value))->toBeTrue('Span ID must be hexadecimal');
+        ->and(ctype_xdigit($value))->toBeTrue('Span ID must be hexadecimal');
 
     return $this;
 });
 
 expect()->extend('toBeRequestId', function () {
-    expect($this->value)
-        ->toBeString('Request ID must be a string')
+    $value = webrickPestString($this->value, 'Request ID');
+    expect($value)
         ->toHaveLength(32, 'Request ID must be 32 characters')
-        ->and(ctype_xdigit($this->value))->toBeTrue('Request ID must be hexadecimal');
+        ->and(ctype_xdigit($value))->toBeTrue('Request ID must be hexadecimal');
 
     return $this;
 });
 
 expect()->extend('toBeValidTraceparent', function () {
-    expect($this->value)
-        ->toBeString('Traceparent must be a string')
+    $value = webrickPestString($this->value, 'Traceparent');
+    expect($value)
         ->toMatch('/^00-[a-f0-9]{32}-[a-f0-9]{16}-[a-f0-9]{2}$/', 'Traceparent must match W3C format: 00-{trace-id}-{span-id}-{flags}');
 
     return $this;
 });
 
 expect()->extend('toHaveTelemetryHeaders', function () {
-    expect($this->value->hasHeader('X-Response-Time'))->toBeTrue('Expected X-Response-Time header');
-    expect($this->value->hasHeader('X-Request-Id'))->toBeTrue('Expected X-Request-Id header');
-    expect($this->value->hasHeader('Trace-Id'))->toBeTrue('Expected Trace-Id header');
+    $response = webrickPestResponse($this->value);
+    expect($response->hasHeader('X-Response-Time'))->toBeTrue('Expected X-Response-Time header');
+    expect($response->hasHeader('X-Request-Id'))->toBeTrue('Expected X-Request-Id header');
+    expect($response->hasHeader('Trace-Id'))->toBeTrue('Expected Trace-Id header');
 
     return $this;
 });
 
 expect()->extend('toHaveResponseTimeHeader', function () {
-    expect($this->value->hasHeader('X-Response-Time'))->toBeTrue('Expected X-Response-Time header');
-    $timing = $this->value->getHeaderLine('X-Response-Time');
+    $response = webrickPestResponse($this->value);
+    expect($response->hasHeader('X-Response-Time'))->toBeTrue('Expected X-Response-Time header');
+    $timing = $response->getHeaderLine('X-Response-Time');
     expect($timing)->toMatch('/^\d+\.\d+ms$/', 'X-Response-Time must be in format: 45.2ms');
 
     return $this;
 });
 
 expect()->extend('toHaveServerTimingHeader', function () {
-    expect($this->value->hasHeader('Server-Timing'))->toBeTrue('Expected Server-Timing header');
-    $timing = $this->value->getHeaderLine('Server-Timing');
+    $response = webrickPestResponse($this->value);
+    expect($response->hasHeader('Server-Timing'))->toBeTrue('Expected Server-Timing header');
+    $timing = $response->getHeaderLine('Server-Timing');
     expect($timing)->toMatch('/^app;dur=\d+\.\d+$/', 'Server-Timing must be in format: app;dur=45.2');
 
     return $this;
@@ -108,7 +111,39 @@ expect()->extend('toHaveServerTimingHeader', function () {
 */
 
 /**
+ * Validate a value supplied to a response expectation.
+ *
+ * @throws \UnexpectedValueException
+ */
+function webrickPestResponse(mixed $value): Response
+{
+    if (!$value instanceof Response) {
+        throw new UnexpectedValueException('Expected a Webrick response for this assertion.');
+    }
+
+    return $value;
+}
+
+/**
+ * Validate a value supplied to a trace identifier expectation.
+ *
+ * @throws \UnexpectedValueException
+ */
+function webrickPestString(mixed $value, string $label): string
+{
+    if (!is_string($value)) {
+        throw new UnexpectedValueException("{$label} must be a string");
+    }
+
+    return $value;
+}
+
+/**
  * Create a mock request with trace attributes.
+ *
+ * @param array<string,mixed> $headers
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
  */
 function mockRequestWithTrace(
     string $method = 'GET',
@@ -120,13 +155,13 @@ function mockRequestWithTrace(
 ): Request {
     $request = mockRequest($method, $uri, $headers);
 
-    if ($traceId) {
+    if ($traceId !== null && $traceId !== '' && $traceId !== '0') {
         $request = $request->withAttribute('trace.trace_id', $traceId);
     }
-    if ($spanId) {
+    if ($spanId !== null && $spanId !== '' && $spanId !== '0') {
         $request = $request->withAttribute('trace.span_id', $spanId);
     }
-    if ($requestId) {
+    if ($requestId !== null && $requestId !== '' && $requestId !== '0') {
         $request = $request->withAttribute('request_id', $requestId);
     }
 
@@ -135,6 +170,7 @@ function mockRequestWithTrace(
 
 /**
  * Assert that response has telemetry headers.
+ * @throws \InvalidArgumentException
  */
 function assertHasTelemetryHeaders(Response $response): void
 {
@@ -146,10 +182,16 @@ function assertHasTelemetryHeaders(Response $response): void
 
 /**
  * Extract trace context from response body (assumes JSON).
+ *
+ * @return array{trace_id:mixed,span_id:mixed,request_id:mixed}
+ * @throws \UnexpectedValueException
  */
 function extractTraceContext(Response $response): array
 {
     $data = json_decode((string) $response->getBody(), true);
+    if (!is_array($data)) {
+        throw new UnexpectedValueException('Expected JSON object containing trace context.');
+    }
 
     return [
         'trace_id' => $data['trace_id'] ?? null,

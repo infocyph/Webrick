@@ -31,6 +31,21 @@ final class KernelDispatchBench
 
     private RouterKernel $staticControllerKernel;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
@@ -49,10 +64,13 @@ final class KernelDispatchBench
             ->input(Request::class);
         $factoryBuilder->factory(
             'benchmark.middleware',
-            static fn(): Closure => static fn(
+            static fn(): Closure => static function (
                 Request $request,
                 Closure $next,
-            ): Response => $next($request),
+            ): Response {
+                /** @var Closure(Request):Response $next */
+                return $next($request);
+            },
             LifetimeEnum::Singleton,
             ['webrick.middleware.pre'],
         );
@@ -67,29 +85,48 @@ final class KernelDispatchBench
         $this->assertSuccessful($this->factoryMiddlewareKernel->handle($this->request));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function staticResponse(): Response
     {
         return Response::json(['ok' => true]);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchClosureHandler(): void
     {
         $this->closureKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchStaticController(): void
     {
         $this->staticControllerKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchTaggedDirectFactoryMiddleware(): void
     {
         $this->factoryMiddlewareKernel->handle($this->request);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertSuccessful(Response $response): void
     {
         if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== '{"ok":true}') {
@@ -97,7 +134,13 @@ final class KernelDispatchBench
         }
     }
 
-    private function kernel(RuntimeContainerInterface $container, callable|array $handler): RouterKernel
+    /**
+     * @param (Closure():Response)|array{class-string,string} $handler
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    private function kernel(RuntimeContainerInterface $container, Closure|array $handler): RouterKernel
     {
         return RouterKernel::bootWithRegistrar(
             log: new NullLogger(),

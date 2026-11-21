@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Infocyph\Webrick\Benchmarks;
+
 use Infocyph\Webrick\Benchmarks\Support\BenchmarkSupport;
 use Infocyph\Webrick\Constants\HttpMethodEnum;
 use Infocyph\Webrick\Constants\MatcherModeEnum;
@@ -19,6 +22,7 @@ use Infocyph\Webrick\Router\Route\CompiledRoute;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Infocyph\Webrick\Support\RouteCache;
 use Psr\Log\NullLogger;
+use RuntimeException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 require_once dirname(__DIR__) . '/benchmarks/Support/BenchmarkSupport.php';
@@ -38,6 +42,15 @@ function out(string $text): void
  *   php benchmark/hello_matchers.php --memory  (memory-only)
  */
 $opts = getopt('', ['iters::', 'rounds::', 'warmup::', 'cache', 'memory', 'help']);
+$optionInt = static function (string $name, int $default) use ($opts): int {
+    if (!is_array($opts) || !array_key_exists($name, $opts)) {
+        return $default;
+    }
+
+    $value = $opts[$name];
+
+    return is_string($value) ? (int) $value : 0;
+};
 
 if (isset($opts['help'])) {
     out("Usage: php benchmark/hello_matchers.php [--iters=500000] [--rounds=5] [--warmup=20000] [--cache] [--memory]\n");
@@ -45,9 +58,9 @@ if (isset($opts['help'])) {
     return;
 }
 
-$iterations = max(1, (int) ($opts['iters'] ?? 500000));
-$rounds = max(1, (int) ($opts['rounds'] ?? 5));
-$warmup = max(0, (int) ($opts['warmup'] ?? 20000));
+$iterations = max(1, $optionInt('iters', 500000));
+$rounds = max(1, $optionInt('rounds', 5));
+$warmup = max(0, $optionInt('warmup', 20000));
 $cacheOnly = isset($opts['cache']);
 $memoryOnly = isset($opts['memory']);
 
@@ -205,7 +218,6 @@ foreach ($routeSets as $set) {
 $summaryRows = [];
 $totalScenarioRuns = \count($modes) * \count($scenarios);
 $totalMatcherTasks = $totalScenarioRuns * 3;
-$scenarioRunNo = 0;
 $completedMatcherTasks = 0;
 
 out("\n");
@@ -237,13 +249,13 @@ foreach ($modes as $modeLabel => $useCache) {
     $cacheNamespace = null;
     if ($useCache) {
         $cacheRoot = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.route-cache';
-        $cacheNamespace = 'bench-' . getmypid() . '-' . uniqid('', true);
+        $pid = getmypid();
+        $cacheNamespace = 'bench-' . ($pid === false ? '' : $pid) . '-' . uniqid('', true);
         if (!is_dir($cacheRoot) && !mkdir($cacheRoot, 0775, true) && !is_dir($cacheRoot)) {
             throw new RuntimeException("Failed to create benchmark cache directory: {$cacheRoot}");
         }
     }
     foreach ($scenarios as $scenario) {
-        $scenarioRunNo++;
 
         $results = [];
         foreach ($matcherSpecs as $spec) {
@@ -419,7 +431,7 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
         $lastPercent = -1;
     }
     $total = max(1, $total);
-    $percent = (int) floor(($completed / $total) * 100);
+    $percent = (int) floor(((float) $completed / (float) $total) * 100.0);
     $percent = max(0, min(100, $percent));
 
     if ($percent === $lastPercent) {
@@ -448,7 +460,8 @@ function progressPercent(int $completed, int $total, bool $forceNewline = false)
  *   key:string,
  *   label:string,
  *   title:string,
- *   register:callable(Registrar):void
+ *   register:callable(Registrar):void,
+ *   routes:list<CompiledRoute>
  * } $routeSet
  * @param array{
  *   suffix:string,
@@ -518,6 +531,9 @@ function makeScenario(array $routeSet, array $template, array $routes, int $rout
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+ * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+ * @throws \RuntimeException
  */
 function runScenarioMatcher(
     array $spec,
@@ -573,6 +589,9 @@ function runScenarioMatcher(
  *   best_ns_op:float,
  *   avg_ns_op:float
  * }
+ * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+ * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+ * @throws \RuntimeException
  */
 function benchMatcher(
     string $name,
@@ -591,7 +610,9 @@ function benchMatcher(
         throw new RuntimeException('Benchmark matcher inputs must be non-empty.');
     }
 
-    $progress ??= static function (string $message): void {};
+    $progress ??= static function (string $message): void {
+        unset($message);
+    };
     $progress('building matcher');
     /** @var MatcherInterface $matcher */
     $matcher = $factory();
@@ -621,10 +642,11 @@ function benchMatcher(
         }
     }
 
+    /** @var non-empty-list<float> $roundNs Guaranteed by max(1, $rounds). */
     $bestNs = min($roundNs);
-    $avgNs = array_sum($roundNs) / count($roundNs);
-    $bestOpsS = ($iterations * 1_000_000_000.0) / $bestNs;
-    $avgOpsS = ($iterations * 1_000_000_000.0) / $avgNs;
+    $avgNs = array_sum($roundNs) / (float) count($roundNs);
+    $bestOpsS = ((float) $iterations * 1_000_000_000.0) / $bestNs;
+    $avgOpsS = ((float) $iterations * 1_000_000_000.0) / $avgNs;
 
     $progress('finished timing');
 
@@ -632,8 +654,8 @@ function benchMatcher(
         'name' => $name,
         'best_ops_s' => $bestOpsS,
         'avg_ops_s' => $avgOpsS,
-        'best_ns_op' => $bestNs / $iterations,
-        'avg_ns_op' => $avgNs / $iterations,
+        'best_ns_op' => $bestNs / (float) $iterations,
+        'avg_ns_op' => $avgNs / (float) $iterations,
     ];
 }
 
@@ -668,15 +690,16 @@ function benchCallable(
         $roundNs[] = (float) (hrtime(true) - $start);
     }
 
+    /** @var non-empty-list<float> $roundNs Guaranteed by max(1, $rounds). */
     $bestNs = min($roundNs);
-    $avgNs = array_sum($roundNs) / count($roundNs);
+    $avgNs = array_sum($roundNs) / (float) count($roundNs);
 
     return [
         'name' => $name,
-        'best_ops_s' => ($iterations * 1_000_000_000.0) / $bestNs,
-        'avg_ops_s' => ($iterations * 1_000_000_000.0) / $avgNs,
-        'best_ns_op' => $bestNs / $iterations,
-        'avg_ns_op' => $avgNs / $iterations,
+        'best_ops_s' => ((float) $iterations * 1_000_000_000.0) / $bestNs,
+        'avg_ops_s' => ((float) $iterations * 1_000_000_000.0) / $avgNs,
+        'best_ns_op' => $bestNs / (float) $iterations,
+        'avg_ns_op' => $avgNs / (float) $iterations,
     ];
 }
 
@@ -703,6 +726,9 @@ function formatMetricCell(?array $row): string
  *
  * @param string $matcher One of MatcherModeEnum::values().
  * @param callable(Registrar):void $register
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ * @throws \LogicException
  */
 function buildBenchmarkCache(string $matcher, string $cachePath, callable $register): void
 {
@@ -727,6 +753,10 @@ function buildBenchmarkCache(string $matcher, string $cachePath, callable $regis
     ]);
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ */
 function clearBenchmarkCache(string $matcher, string $cachePath): void
 {
     RouteCache::clear([
@@ -745,14 +775,27 @@ function clearBenchmarkCache(string $matcher, string $cachePath): void
 
 /**
  * @param array{
+ *   key:string,
+ *   route_set:string,
+ *   case:string,
+ *   title:string,
+ *   method:string,
+ *   host:string,
+ *   path:string,
+ *   route_count:int,
  *   register:callable(Registrar):void,
- *   routes:list<CompiledRoute>
+ *   routes:list<CompiledRoute>,
+ *   assertHit:callable(array{0:CompiledRoute,1:array<string,string>}):bool
  * } $scenario
  * @param array{
+ *   name:string,
  *   mode:string,
- *   factory:callable():MatcherInterface,
- *   name:string
+ *   cache_suffix:string,
+ *   factory:callable():MatcherInterface
  * } $spec
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ * @throws \LogicException
  */
 function buildScenarioMatcher(array $scenario, bool $useCache, string $cachePath, array $spec): MatcherInterface
 {

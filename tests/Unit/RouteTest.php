@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Route\Route;
+use Infocyph\Webrick\Router\Route\CompiledRoute;
 
 describe('Route', function () {
     it('creates basic routes', function () {
-        $handler = fn () => Response::json(['ok' => true]);
+        $handler = fn (): Response => Response::json(['ok' => true]);
         $route = new Route('GET', '/users', $handler);
 
         expect($route)
@@ -50,15 +51,14 @@ describe('Route', function () {
     });
 
     it('generates unique handler fingerprint', function () {
-        $handler1 = fn () => 'a';
-        $handler2 = fn () => 'b';
+        $handler1 = fn (): string => 'a';
+        $handler2 = fn (): string => 'b';
 
         $fp1 = Route::fingerprint($handler1);
         $fp2 = Route::fingerprint($handler2);
 
-        expect($fp1)
-            ->toBeString()
-            ->and($fp2)->toBeString()
+        expect($fp1)->not->toBe('')
+            ->and($fp2)->not->toBe('')
             ->and($fp1)->not->toBe($fp2);
     });
 
@@ -71,3 +71,42 @@ describe('Route', function () {
             ->and($fp2)->toContain('Controller::otherMethod');
     });
 });
+
+test('compiled route state rejects malformed method descriptors without probing missing offsets', function (array $handler): void {
+    expect(fn(): CompiledRoute => CompiledRoute::__set_state([
+        'method' => 'GET',
+        'path' => '/state',
+        'handler' => $handler,
+    ]))->toThrow(UnexpectedValueException::class, 'Invalid handler');
+})->with([
+    'named keys' => [['class' => stdClass::class, 'method' => 'handle']],
+    'missing class offset' => [[1 => 'handle', 2 => stdClass::class]],
+    'missing method offset' => [[0 => stdClass::class, 2 => 'handle']],
+]);
+
+test('compiled route state restores callables and unresolved method descriptors', function (string $kind): void {
+    $handler = match ($kind) {
+        'closure' => static fn(): string => 'state',
+        'reversed-array' => [1 => 'json', 0 => Response::class],
+        default => 'strlen',
+    };
+    $middleware = [1 => 'handle', 0 => stdClass::class];
+    $route = CompiledRoute::__set_state([
+        'method' => 'GET',
+        'path' => '/state',
+        'handler' => $handler,
+        'middleware' => [$middleware],
+        'dynamic' => false,
+        'regex' => '',
+        'variables' => [],
+        'index' => 123,
+        'segments' => [],
+    ]);
+
+    expect($route->getHandler())->toBe($handler)
+        ->and($route->getMiddleware())->toBe([[stdClass::class, 'handle']]);
+})->with([
+    'closure',
+    'reversed-array',
+    'function',
+]);

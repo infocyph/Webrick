@@ -20,6 +20,7 @@ final readonly class TransportRequestFactory
      * @param array<string,mixed> $files
      * @param array<string,mixed>|null $query
      * @param array<string,mixed> $cookies
+     * @throws \InvalidArgumentException
      */
     public static function fromParts(
         array $server,

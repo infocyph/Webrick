@@ -22,6 +22,8 @@ final readonly class ViewResponder
     /**
      * @param array<string,mixed> $data
      * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public function render(
         string $view,

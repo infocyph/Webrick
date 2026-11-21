@@ -10,6 +10,7 @@ final class Vary implements \Stringable
     /** @var array<string,bool> */
     private array $tokens = [];
 
+    #[\Override]
     public function __toString(): string
     {
         if (isset($this->tokens['*'])) {
@@ -20,6 +21,9 @@ final class Vary implements \Stringable
         return implode(', ', $names);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromString(string $raw): self
     {
         $vary = new self();
@@ -44,6 +48,9 @@ final class Vary implements \Stringable
         return new self();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function add(string ...$headers): self
     {
         $copy = clone $this;
@@ -66,6 +73,9 @@ final class Vary implements \Stringable
         return $copy;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function remove(string ...$headers): self
     {
         $copy = clone $this;
@@ -84,6 +94,9 @@ final class Vary implements \Stringable
         return ucwords($lower, '-');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function norm(string $header): string
     {
         $header = trim($header);

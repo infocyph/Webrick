@@ -19,6 +19,7 @@ use Infocyph\Webrick\Router\Definition\Attribute\Produces;
 /**
  * Declarative route definition produced by the Registrar.
  *
+ * @api
  * @psalm-type MiddlewareList = list<string|object>
  */
 final class Route implements RouteInterface
@@ -72,7 +73,7 @@ final class Route implements RouteInterface
             return 'closure@' . spl_object_id($h);
         }
 
-        return is_object($h) ? $h::class . '::__invoke' : 'callable';
+        return get_debug_type($h) . '::__invoke';
     }
 
     public function getCorsPolicy(): ?Cors
@@ -98,6 +99,7 @@ final class Route implements RouteInterface
         return $clone;
     }
 
+    #[\Override]
     public function withDomain(?string $domain): self
     {
         $clone = clone $this;
@@ -107,6 +109,7 @@ final class Route implements RouteInterface
     }
 
     /** @param list<string|object> $middleware */
+    #[\Override]
     public function withMiddleware(array $middleware): self
     {
         if ($middleware === []) {
@@ -119,6 +122,7 @@ final class Route implements RouteInterface
         return $clone;
     }
 
+    #[\Override]
     public function withName(string $name): self
     {
         $clone = clone $this;

@@ -21,7 +21,12 @@ use Infocyph\Webrick\Response\Range\RangeResponder;
 use JsonSerializable;
 use RuntimeException;
 
-/** Immutable HTTP response optimized for native string and file bodies. */
+/**
+ * Immutable HTTP response optimized for native string and file bodies.
+ * Public response construction and extension contract.
+ *
+ * @api
+ */
 class Response
 {
     use MacroMix;
@@ -36,10 +41,14 @@ class Response
 
     private HeaderBag $headers;
 
-    /** @var null|\Closure():iterable<string> */
+    /** @var null|\Closure():iterable<mixed> */
     private ?\Closure $producer = null;
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __construct(
         private int $statusCode = StatusEnum::OK->value,
         BodyStream|string|null $body = null,
@@ -54,7 +63,11 @@ class Response
         $this->body = $body ?? '';
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function attachment(
         string|Stream $file,
         string $name,
@@ -89,7 +102,9 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param positive-int $depth
+     * @param int<1,2147483647> $depth
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function auto(
         Request $r,
@@ -131,13 +146,21 @@ class Response
         return new self($status, $json, $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function create(string $content = '', int $status = StatusEnum::OK->value, array $headers = []): self
     {
         return new self($status, $content, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function download(
         string|Stream $file,
         ?string $name = null,
@@ -149,7 +172,11 @@ class Response
         return self::attachment($file, $name, $mime, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function empty(int $code, array $headers = []): self
     {
         $bag = new HeaderBag($headers);
@@ -164,7 +191,11 @@ class Response
         return new self($code, '', $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function inline(
         string|Stream $file,
         ?string $name = null,
@@ -189,7 +220,9 @@ class Response
     /**
      * @param array<array-key,mixed>|JsonSerializable|string|int|float|bool|null $data
      * @param array<string,string|list<string>> $headers
-     * @param positive-int $depth
+     * @param int<1,2147483647> $depth
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
      */
     public static function json(
         JsonSerializable|array|string|int|float|bool|null $data,
@@ -211,13 +244,21 @@ class Response
         return new self($status, $json, $bag->all());
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function noContent(array $headers = []): self
     {
         return self::empty(StatusEnum::NO_CONTENT->value, $headers);
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function plaintext(string $msg, int $code = StatusEnum::BAD_REQUEST->value, array $headers = []): self
     {
         $bag = self::withDefaults(new HeaderBag($headers), ['Content-Type' => MediaTypeEnum::PLAIN->value]);
@@ -225,7 +266,12 @@ class Response
         return new self($code, $msg, $bag->all());
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public static function rangedDownload(
         Request $req,
         string $absolutePath,
@@ -242,7 +288,12 @@ class Response
         return self::rangedFile($req, $absolutePath, $mime, self::singleValueHeaders($bag));
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public static function rangedFile(
         Request $req,
         string $absolutePath,
@@ -255,6 +306,10 @@ class Response
         return RangeResponder::forFile($req, $absolutePath, $mediaType, $headers);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function redirect(string $uri, int $status = StatusEnum::FOUND->value): self
     {
         $resolved = StatusEnum::tryFrom($status);
@@ -270,8 +325,10 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
+     * @param callable(): (iterable<mixed>|scalar|\Stringable|null)|iterable<mixed> $producer
      * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     public static function stream(
         callable|iterable $producer,
@@ -290,7 +347,11 @@ class Response
         return $response;
     }
 
-    /** @param array<string,string|list<string>> $headers */
+    /**
+     * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function streamDownload(
         string|Stream $file,
         ?string $name = null,
@@ -318,6 +379,7 @@ class Response
         return new self(StatusEnum::OK->value, $body, $bag->all());
     }
 
+    /** @throws \InvalidArgumentException */
     public function cache(): CacheControl
     {
         return CacheControl::fromHeaderBag($this->headers);
@@ -342,12 +404,18 @@ class Response
         return $this->body instanceof FileBody ? $this->body : null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function getHeader(string $name): array
     {
         return $this->headers->get($name);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function getHeaderLine(string $name): string
     {
         return $this->headers->getHeaderLine($name);
@@ -359,7 +427,7 @@ class Response
         return $this->headers->all();
     }
 
-    /** @return null|\Closure():iterable<string> */
+    /** @return null|\Closure():iterable<mixed> */
     public function getProducer(): ?\Closure
     {
         return $this->producer;
@@ -385,6 +453,9 @@ class Response
         return is_string($this->body) ? $this->body : null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function hasHeader(string $name): bool
     {
         return $this->headers->has($name);
@@ -400,7 +471,10 @@ class Response
         return is_string($this->body);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAddedHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->withAdded($name, $value));
@@ -414,6 +488,10 @@ class Response
         return $response;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function withCache(\Closure $edit): self
     {
         $cache = $edit($this->cache());
@@ -424,17 +502,26 @@ class Response
         return $this->withHeader('Cache-Control', (string) $cache);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withHeader(string $name, string|array $value): self
     {
         return $this->copy(headers: $this->headers->with($name, $value));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withoutHeader(string $name): self
     {
         return $this->copy(headers: $this->headers->without($name));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withProtocolVersion(string $version): self
     {
         self::assertProtocolVersion($version);
@@ -447,6 +534,10 @@ class Response
         return $this->copy(headers: $this->headers->withSmart($name, $value));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function withStatus(int $code, string $reasonPhrase = ''): self
     {
         self::assertStatus($code);
@@ -458,6 +549,9 @@ class Response
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertProtocolVersion(string $version): void
     {
         if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
@@ -465,6 +559,9 @@ class Response
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertReasonPhrase(?string $reasonPhrase): void
     {
         if ($reasonPhrase !== null && preg_match(self::INVALID_REASON_PHRASE, $reasonPhrase) === 1) {
@@ -472,6 +569,9 @@ class Response
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function assertStatus(int $code): void
     {
         if ($code < 100 || $code > 599) {
@@ -504,8 +604,8 @@ class Response
     }
 
     /**
-     * @param callable(): (iterable<mixed>|string)|iterable<mixed> $producer
-     * @return \Closure():iterable<string>
+     * @param callable(): (iterable<mixed>|scalar|\Stringable|null)|iterable<mixed> $producer
+     * @return \Closure():iterable<mixed>
      */
     private static function normalizeProducer(callable|iterable $producer): \Closure
     {
@@ -549,7 +649,10 @@ class Response
         return 'W/' . Utils::generateEtag(($size ?? -1) . '|' . ($mtime ?? -1) . '|' . $name);
     }
 
-    /** @param array<string,string> $defaults */
+    /**
+     * @param array<string,string> $defaults
+     * @throws \InvalidArgumentException
+     */
     private static function withDefaults(HeaderBag $bag, array $defaults): HeaderBag
     {
         foreach ($defaults as $name => $value) {

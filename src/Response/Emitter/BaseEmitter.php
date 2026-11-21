@@ -9,12 +9,19 @@ use Infocyph\Webrick\Constants\StatusEnum;
 use Infocyph\Webrick\Interfaces\BodyStream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
+use Infocyph\Webrick\Support\HeaderLine;
 
 /** Unified, extensible HTTP emitter with SAPI-friendly defaults. */
 abstract class BaseEmitter implements EmitterInterface
 {
+    /**
+     * Native types reject existing untyped subclass overrides (PHP 8.4/8.5).
+     * @psalm-suppress MissingClassConstType Preserve the 6.0.4 extension contract.
+     */
     protected const CHUNK_SIZE = 8_192;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped overrides. */
     protected const H2_HOP_BY_HOP = [
         'connection' => true,
         'keep-alive' => true,
@@ -27,6 +34,11 @@ abstract class BaseEmitter implements EmitterInterface
     /** @var resource|null */
     private mixed $outputStream = null;
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
         $isStreaming = $response->isStreaming();
@@ -57,6 +69,9 @@ abstract class BaseEmitter implements EmitterInterface
         $this->finish();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     protected function allowsBodyForCurrentRequest(Response $response): bool
     {
         $method = HttpMethodEnum::normalize($this->serverString('REQUEST_METHOD', HttpMethodEnum::GET->value));
@@ -65,6 +80,9 @@ abstract class BaseEmitter implements EmitterInterface
             && $method !== HttpMethodEnum::HEAD->value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function emitFromBody(BodyStream $body): void
     {
         if ($body->isSeekable()) {
@@ -80,6 +98,9 @@ abstract class BaseEmitter implements EmitterInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function emitSmall(BodyStream $body): void
     {
         if ($body->isSeekable()) {
@@ -88,6 +109,10 @@ abstract class BaseEmitter implements EmitterInterface
         $this->write((string) $body);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     */
     protected function emitStreaming(Response $response): void
     {
         $this->reduceOutputBuffering();
@@ -172,6 +197,7 @@ abstract class BaseEmitter implements EmitterInterface
         header_remove('X-Powered-By');
     }
 
+    /** @throws \InvalidArgumentException When an emitted response header is invalid. */
     protected function sendHeadersCommon(
         Response $response,
         ?int $size,
@@ -184,7 +210,7 @@ abstract class BaseEmitter implements EmitterInterface
 
         $protocol = $this->serverProtocol();
         $isHttp11 = str_starts_with($protocol, 'HTTP/1.1');
-        $isHttp2 = str_starts_with($protocol, 'HTTP/2') || str_starts_with($protocol, 'HTTP/3');
+        $isHttp2 = ResponseWriterSupport::isMultiplexedProtocol($protocol);
 
         $this->setStatusCode($response->getStatusCode());
         $this->removePoweredByHeader();
@@ -201,9 +227,10 @@ abstract class BaseEmitter implements EmitterInterface
         }
     }
 
+    /** @throws \InvalidArgumentException */
     protected function sendRawHeader(string $name, string $value): void
     {
-        header("{$name}: {$value}", false);
+        header(HeaderLine::validated($name, $value), false);
     }
 
     protected function serverProtocol(): string
@@ -228,6 +255,9 @@ abstract class BaseEmitter implements EmitterInterface
         http_response_code($code);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     protected function shouldEmitBody(Response $response, ?Request $request = null): bool
     {
         if (self::statusHasNoContent($response->getStatusCode())) {
@@ -264,6 +294,9 @@ abstract class BaseEmitter implements EmitterInterface
         return false;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     protected function write(string $chunk): void
     {
         if ($chunk === '') {
@@ -302,7 +335,11 @@ abstract class BaseEmitter implements EmitterInterface
             || $status === StatusEnum::NOT_MODIFIED->value;
     }
 
-    /** @param iterable<mixed> $out */
+    /**
+     * @param iterable<mixed> $out
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     */
     private function emitIterableOutput(iterable $out): void
     {
         foreach ($out as $chunk) {

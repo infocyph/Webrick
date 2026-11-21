@@ -78,20 +78,34 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->engine = new CompiledMatcherEngine();
+        $this->fastEngine = new CompiledMatcherFastEngine();
+        $this->index = new CanonicalMatcherIndex();
+    }
+
+    /**
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function add(CompiledRoute $route): void
     {
         if ($this->finalized) {
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $host = $this->canonicalRouteHost($route->getDomain());
         $this->index->add($host, $route);
         matcher_capture_route_alias($this->alias, $route);
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
-    /** @return array<string,array{0:string,1:?string}> */
+    /**
+     * @return array<string,array{0:string,1:?string}>
+     * @throws \RuntimeException
+     */
     public function aliasIndex(): array
     {
         if (!$this->cacheReadable) {
@@ -132,6 +146,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             && $this->resolveActiveCacheDir() !== null;
     }
 
+    #[\Override]
     public function enableCache(string $cacheLocation): self
     {
         $this->cacheEnabled = true;
@@ -144,6 +159,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this;
     }
 
+    #[\Override]
     public function enableCacheWrite(bool $enable = true): self
     {
         $this->cacheWriteEnabled = $enable;
@@ -151,13 +167,19 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $this;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function finalize(): void
     {
         if ($this->finalized) {
             return;
         }
 
-        $this->bootEngines();
         if ($this->canBootFromCache()) {
             $this->cacheReadable = true;
             $this->finalized = true;
@@ -165,7 +187,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled) {
             $this->publishGeneration();
         }
@@ -186,6 +207,15 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
@@ -205,11 +235,18 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
         return $this->matchCompiledIr($method, $host, $path, true);
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
@@ -222,6 +259,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
     }
 
     /** @return list<string> */
+    #[\Override]
     public function middlewareRequirements(): array
     {
         return !$this->cacheReadable
@@ -229,7 +267,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             : ShardedCacheGeneration::middlewareRequirements($this->cacheDir, self::INDEX_CACHE_VERSION);
     }
 
-    /** @return array{string,string|null}|null */
+    /**
+     * @return array{0:string,1:?string}|null
+     * @throws \RuntimeException
+     */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
@@ -237,7 +278,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
-    /** @param array<array-key,mixed> $data */
+    /**
+     * @param array<array-key,mixed> $data
+     * @throws \RuntimeException
+     */
     private static function assertPayloadHash(mixed $stored, array $data, string $message): void
     {
         if (!is_string($stored) || !hash_equals($stored, hash('xxh128', serialize($data)))) {
@@ -245,7 +289,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    /** @param array<array-key,mixed> $blob */
+    /**
+     * @param array<array-key,mixed> $blob
+     * @throws \UnexpectedValueException
+     */
     private static function validateWrittenPayload(array $blob, bool $compiledGroup, string $hash): void
     {
         $data = $blob['_data'] ?? null;
@@ -273,18 +320,6 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    private function bootEngines(): void
-    {
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
-    }
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->bootEngines();
-    }
-
     private function cacheStorageDir(): string
     {
         return $this->activeCacheDir ?? $this->cacheDir;
@@ -299,6 +334,7 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @phpstan-return CompiledGroup|null
+     * @throws \RuntimeException
      */
     private function loadGroup(string $host, string $bucket): ?array
     {
@@ -396,6 +432,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function preloadProductionGroups(): void
     {
         $groups = $this->partitionIndex();
@@ -410,10 +449,16 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
             }
         }
 
-        $this->aliasIndex();
+        $this->alias = $this->aliasIndex();
         $this->cachePreloaded = true;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private function publishGeneration(): void
     {
         [$generation, $this->activeCacheDir] = ShardedCacheGeneration::create($this->cacheDir);
@@ -438,6 +483,9 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function resolveActiveCacheDir(): ?string
     {
         if ($this->activeCacheDir !== null) {
@@ -453,7 +501,10 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /** @return list<CompiledGroup> */
+    /**
+     * @return list<CompiledGroup>
+     * @throws \RuntimeException
+     */
     private function resolveCandidateGroups(string $host, string $bucket): array
     {
         $groups = [];
@@ -471,7 +522,13 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         return $groups;
     }
 
-    /** @param CanonicalGroup $group */
+    /**
+     * @param CanonicalGroup $group
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private function writeGroup(string $host, string $bucket, array $group): void
     {
         $file = sharded_matcher_shard_file_path(
@@ -486,7 +543,12 @@ final class ShardedMatcher extends AbstractMatcher implements MatcherInterface
         $this->writePayload($file, $compiledGroup, true);
     }
 
-    /** @param array<array-key,mixed> $payload */
+    /**
+     * @param array<array-key,mixed> $payload
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     private function writePayload(string $file, array $payload, bool $compiledGroup = false): void
     {
         $directory = dirname($file);

@@ -60,13 +60,13 @@ test('interleaved fibers keep maintenance gate state isolated', function (): voi
 
     $fiberA = new Fiber(static function () use ($gateA, $routing): string {
         $before = (string) $gateA->evaluate($routing)?->getBody();
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
         return $before . '|' . (string) $gateA->evaluate($routing)?->getBody();
     });
     $fiberB = new Fiber(static function () use ($gateB, $routing): string {
         $before = (string) $gateB->evaluate($routing)?->getBody();
-        Fiber::suspend();
+        expect(Fiber::suspend())->toBeNull();
 
         return $before . '|' . (string) $gateB->evaluate($routing)?->getBody();
     });

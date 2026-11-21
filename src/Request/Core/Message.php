@@ -22,6 +22,7 @@ abstract class Message
 
     /**
      * @param array<array-key,mixed> $headers
+     * @throws \InvalidArgumentException
      */
     protected function __construct(
         array $headers = [],
@@ -33,19 +34,25 @@ abstract class Message
         $this->body = $body ?? new StringBody('');
     }
 
-    protected function __clone(): void {}
+    protected function __clone() {}
 
     public function getBody(): BodyStream
     {
         return $this->body;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function getHeader(string $name): array
     {
         return $this->headers[$this->norm($name)] ?? [];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function getHeaderLine(string $name): string
     {
         return implode(',', $this->getHeader($name));
@@ -62,12 +69,18 @@ abstract class Message
         return $this->protocol;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function hasHeader(string $name): bool
     {
         return isset($this->headers[$this->norm($name)]);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAddedHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -90,7 +103,10 @@ abstract class Message
         return $body === $this->body ? $this : $this->withPropertyValue('body', $body);
     }
 
-    /** @param string|list<string> $value */
+    /**
+     * @param string|list<string> $value
+     * @throws \InvalidArgumentException
+     */
     public function withHeader(string $name, string|array $value): static
     {
         $norm = $this->norm($name);
@@ -102,6 +118,9 @@ abstract class Message
         return $this->withMappedHeaderValue($norm, $values);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withoutHeader(string $name): static
     {
         if (!$this->hasHeader($name)) {
@@ -113,6 +132,9 @@ abstract class Message
         return $clone;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withProtocolVersion(string $version): static
     {
         self::assertProtocolVersion($version);
@@ -120,6 +142,9 @@ abstract class Message
         return $version === $this->protocol ? $this : $this->withPropertyValue('protocol', $version);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertProtocolVersion(string $version): void
     {
         if (preg_match(self::PROTOCOL_VERSION_RX, $version) !== 1) {
@@ -127,6 +152,9 @@ abstract class Message
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function norm(string $name): string
     {
         if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
@@ -139,6 +167,7 @@ abstract class Message
     /**
      * @param array<array-key,mixed> $headers
      * @return array<string,list<string>>
+     * @throws \InvalidArgumentException
      */
     private function normalise(array $headers): array
     {
@@ -155,6 +184,7 @@ abstract class Message
 
     /**
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function normalizeHeaderValues(mixed $value): array
     {

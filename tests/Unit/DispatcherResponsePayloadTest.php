@@ -10,7 +10,12 @@ use Infocyph\Webrick\Router\Kernel\RouterKernel;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Psr\Log\NullLogger;
 
-/** @param list<callable> $middleware */
+/**
+ * @param list<callable> $middleware
+ * @throws \RuntimeException
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
+ */
 function dispatchResponsePayloadForTest(mixed $payload, array $middleware = []): Response
 {
     $kernel = RouterKernel::bootWithRegistrar(
@@ -45,7 +50,14 @@ test('fast dispatch preserves route handler array payloads', function (): void {
 
 test('middleware terminal preserves route handler array payloads', function (): void {
     $middleware = [
-        static fn(Request $request, Closure $next): Response => $next($request),
+        static function (Request $request, Closure $next): Response {
+            $response = $next($request);
+            if (!$response instanceof Response) {
+                throw new UnexpectedValueException('Dispatcher middleware must receive a Response.');
+            }
+
+            return $response;
+        },
     ];
 
     foreach ([
@@ -62,6 +74,7 @@ test('middleware terminal preserves route handler array payloads', function (): 
 
 test('dispatcher preserves existing non-array route result behavior', function (): void {
     $jsonSerializable = new class implements JsonSerializable {
+        #[\Override]
         public function jsonSerialize(): mixed
         {
             return ['serialized' => true];
@@ -83,6 +96,6 @@ test('dispatcher preserves existing non-array route result behavior', function (
 
     $response = dispatchResponsePayloadForTest(Response::plaintext('already a response', 202));
 
-    expect($response)->toHaveStatus(202)
+    expect($response->getStatusCode())->toBe(202)
         ->and((string) $response->getBody())->toBe('already a response');
 });

@@ -6,6 +6,7 @@ use Infocyph\CacheLayer\Cache\Cache;
 use Infocyph\Webrick\Request\Core\Stream;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Router\Definition\Registrar;
+use Infocyph\Webrick\Router\Matching\MatcherInterface;
 use Infocyph\Webrick\Router\Route\Collection;
 use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\LoggerInterface;
@@ -15,10 +16,15 @@ use Psr\Log\NullLogger;
 /**
  * Simple test logger for capturing log messages during tests.
  */
-class TestLogger implements LoggerInterface
+final class TestLogger implements LoggerInterface
 {
-    public array $records = [];
+    /** @var list<array{level:mixed,message:string,context:array<array-key,mixed>}> */
+    private array $records = [];
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function alert(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ALERT, $message, $context);
@@ -29,26 +35,43 @@ class TestLogger implements LoggerInterface
         $this->records = [];
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function critical(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::CRITICAL, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function debug(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::DEBUG, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function emergency(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::EMERGENCY, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function error(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::ERROR, $message, $context);
     }
 
+    /** @return array<int,array{level:mixed,message:string,context:array<array-key,mixed>}> */
     public function getRecords(?string $level = null): array
     {
         if ($level === null) {
@@ -87,11 +110,16 @@ class TestLogger implements LoggerInterface
         return $this->hasRecords(LogLevel::WARNING);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function info(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::INFO, $message, $context);
     }
 
+    #[\Override]
     public function log($level, string|Stringable $message, array $context = []): void
     {
         $this->records[] = [
@@ -101,11 +129,19 @@ class TestLogger implements LoggerInterface
         ];
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function notice(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::NOTICE, $message, $context);
     }
 
+    /**
+     * @throws \Psr\Log\InvalidArgumentException
+     */
+    #[\Override]
     public function warning(string|Stringable $message, array $context = []): void
     {
         $this->log(LogLevel::WARNING, $message, $context);
@@ -113,6 +149,11 @@ class TestLogger implements LoggerInterface
 }
 /**
  * Create a test registrar with empty collection.
+ */
+/**
+ * @param array{autoSlashRedirect?:bool,exposeUrlServices?:bool,signKey?:?string,signedDefaultTtl?:?int,signedUrlConfig?:?SignedUrlConfig,urlBaseUri?:string} $options
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
  */
 function testRegistrar(array $options = []): Registrar
 {
@@ -138,16 +179,22 @@ function testRegistrar(array $options = []): Registrar
         signedUrlConfig: $opts['signedUrlConfig'] instanceof SignedUrlConfig
             ? $opts['signedUrlConfig']
             : null,
-        urlBaseUri: is_string($opts['urlBaseUri']) ? $opts['urlBaseUri'] : '',
+        urlBaseUri: $opts['urlBaseUri'],
     );
 }
 /**
  * Create a mock PSR-7 Request for testing
  */
+/**
+ * @param array<string,mixed> $headers
+ * @param array<array-key,mixed> $body
+ * @throws \InvalidArgumentException
+ * @throws \RuntimeException
+ */
 function mockRequest(string $method, string $uri, array $headers = [], array $body = []): Request
 {
     foreach (array_keys($_SERVER) as $key) {
-        if (is_string($key) && str_starts_with($key, 'HTTP_')) {
+        if (str_starts_with($key, 'HTTP_')) {
             unset($_SERVER[$key]);
         }
     }
@@ -216,6 +263,8 @@ function testEncryptionKey(): string
 
 /**
  * Clean test cache directory.
+ *
+ * @throws UnexpectedValueException For non-filesystem iterator entries.
  */
 function cleanTestCache(string $path): void
 {
@@ -229,12 +278,65 @@ function cleanTestCache(string $path): void
     );
 
     foreach ($files as $file) {
-        if ($file->isDir()) {
-            rmdir($file->getRealPath());
+        if (!$file instanceof SplFileInfo) {
+            throw new UnexpectedValueException('Unexpected filesystem entry during test cache cleanup.');
+        }
+        $entryPath = $file->getPathname();
+        if ($file->isDir() && !$file->isLink()) {
+            rmdir($entryPath);
         } else {
-            unlink($file->getRealPath());
+            unlink($entryPath);
         }
     }
 
     rmdir($path);
+}
+
+/**
+ * Validate headers supplied by untyped test callbacks before constructing a response.
+ *
+ * @param array<array-key,mixed> $headers
+ * @return array<string,string|list<string>>
+ * @throws UnexpectedValueException
+ */
+function webrickTestHeaders(array $headers): array
+{
+    $validated = [];
+    foreach ($headers as $name => $value) {
+        if (!is_string($name)) {
+            throw new UnexpectedValueException('Test header names must be strings.');
+        }
+
+        if (is_string($value)) {
+            $validated[$name] = $value;
+
+            continue;
+        }
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new UnexpectedValueException('Test header values must be strings or string lists.');
+        }
+
+        $members = array_values(array_filter($value, 'is_string'));
+        if (count($members) !== count($value)) {
+            throw new UnexpectedValueException('Test header list members must be strings.');
+        }
+        $validated[$name] = $members;
+    }
+
+    return $validated;
+}
+
+/**
+ * Validate the Pest-provided matcher factory at the dataset boundary.
+ *
+ * @throws UnexpectedValueException When the dataset does not return a matcher.
+ */
+function makeTestMatcher(Closure $factory): MatcherInterface
+{
+    $matcher = $factory();
+    if (!$matcher instanceof MatcherInterface) {
+        throw new UnexpectedValueException('Matcher dataset factory must return MatcherInterface.');
+    }
+
+    return $matcher;
 }

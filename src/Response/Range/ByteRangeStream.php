@@ -16,6 +16,10 @@ final class ByteRangeStream implements BodyStream
 {
     private int $position = 0;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __construct(
         private readonly Stream $base,
         private readonly int $start,
@@ -55,21 +59,25 @@ final class ByteRangeStream implements BodyStream
         }
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->base->close();
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         return $this->base->detach();
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->position >= $this->length || $this->base->eof();
     }
 
+    #[\Override]
     public function getContents(): string
     {
         $contents = '';
@@ -84,31 +92,37 @@ final class ByteRangeStream implements BodyStream
         return $contents;
     }
 
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         return $this->base->getMetadata($key);
     }
 
+    #[\Override]
     public function getSize(): int
     {
         return $this->length;
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return $this->base->isReadable();
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return false;
     }
 
+    #[\Override]
     public function read(int $length): string
     {
         if ($length < 0) {
@@ -124,11 +138,13 @@ final class ByteRangeStream implements BodyStream
         return $chunk;
     }
 
+    #[\Override]
     public function rewind(): void
     {
         $this->seek(0);
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         $target = match ($whence) {
@@ -146,11 +162,13 @@ final class ByteRangeStream implements BodyStream
         $this->position = $target;
     }
 
+    #[\Override]
     public function tell(): int
     {
         return $this->position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         throw new RuntimeException('ByteRangeStream is read-only.');

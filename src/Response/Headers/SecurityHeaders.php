@@ -33,6 +33,9 @@ final class SecurityHeaders
 
     private function __construct() {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function hsts(Response $r, bool $includeSub = true): Response
     {
         $val = 'max-age=31536000' . ($includeSub ? '; includeSubDomains' : '');
@@ -40,6 +43,9 @@ final class SecurityHeaders
         return self::setIfAbsent($r, 'Strict-Transport-Security', $val);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function tight(
         Response $r,
         bool $hsts = true,
@@ -76,12 +82,18 @@ final class SecurityHeaders
         return $hsts && $secureRequest ? self::hsts($r, $includeSubs) : $r;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function setIfAbsent(Response $r, string $name, string $value): Response
     {
         return $r->hasHeader($name) ? $r : $r->withHeader($name, $value);
     }
 
-    /** @return array{string,string,?string} */
+    /**
+     * @return array{string,string,?string}
+     * @throws \InvalidArgumentException
+     */
     private static function validatedPolicy(string $referrer, string $xfo, ?string $corp): array
     {
         $referrer = strtolower(trim($referrer));

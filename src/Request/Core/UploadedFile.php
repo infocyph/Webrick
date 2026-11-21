@@ -15,6 +15,9 @@ final class UploadedFile
 
     private bool $moved = false;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private string|BodyStream $src,
         private readonly ?int $size = null,
@@ -22,6 +25,9 @@ final class UploadedFile
         private readonly ?string $clientName = null,
         private readonly ?string $clientType = null,
     ) {
+        if (is_string($src) && (str_contains($src, "\0") || str_starts_with($src, '//') || str_starts_with($src, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $src) === 1)) {
+            throw new InvalidArgumentException('Upload source must be a local filesystem path.');
+        }
         if (!in_array($error, [
             UPLOAD_ERR_OK,
             UPLOAD_ERR_INI_SIZE,
@@ -48,15 +54,22 @@ final class UploadedFile
      *   name?: string|null,
      *   type?: string|null
      * } $spec
+     * @throws \InvalidArgumentException
      */
     public static function fromSpec(array $spec): self
     {
+        $source = $spec['tmp_name'] ?? null;
+        $size = $spec['size'] ?? null;
+        $error = $spec['error'] ?? null;
+        $name = $spec['name'] ?? null;
+        $type = $spec['type'] ?? null;
+
         return new self(
-            is_string($spec['tmp_name'] ?? null) ? $spec['tmp_name'] : '',
-            is_int($spec['size'] ?? null) ? $spec['size'] : null,
-            is_int($spec['error'] ?? null) ? $spec['error'] : UPLOAD_ERR_NO_FILE,
-            is_string($spec['name'] ?? null) ? $spec['name'] : null,
-            is_string($spec['type'] ?? null) ? $spec['type'] : null,
+            is_string($source) ? $source : '',
+            is_int($size) ? $size : null,
+            is_int($error) ? $error : UPLOAD_ERR_NO_FILE,
+            is_string($name) ? $name : null,
+            is_string($type) ? $type : null,
         );
     }
 
@@ -89,6 +102,9 @@ final class UploadedFile
         return $this->src instanceof BodyStream ? $this->src->getSize() : null;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function getStream(): BodyStream
     {
         $this->assertOkAndNotMoved();
@@ -104,6 +120,10 @@ final class UploadedFile
         return $this->src;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function moveTo(string $targetPath): void
     {
         $this->assertOkAndNotMoved();
@@ -130,6 +150,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertOkAndNotMoved(): void
     {
         if ($this->err !== UPLOAD_ERR_OK) {
@@ -140,10 +163,17 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function assertTarget(string $path): void
     {
         if ($path === '') {
             throw new InvalidArgumentException('Target path must be non-empty');
+        }
+        if (str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new InvalidArgumentException('Upload target must be a local filesystem path.');
         }
 
         $directory = dirname($path);
@@ -158,6 +188,9 @@ final class UploadedFile
         return $stream->eof();
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function copyStreamContents(BodyStream $source, string $temporaryPath, string $targetPath): void
     {
         $out = fopen($temporaryPath, 'wb');
@@ -183,6 +216,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function copyStreamTo(string $targetPath): void
     {
         $source = $this->src;
@@ -216,6 +252,9 @@ final class UploadedFile
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function movePathTo(string $sourcePath, string $targetPath): void
     {
         if (is_uploaded_file($sourcePath)) {
@@ -229,19 +268,41 @@ final class UploadedFile
         if (self::attemptFilesystemOperation(static fn(): bool => rename($sourcePath, $targetPath))) {
             return;
         }
-        if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $targetPath))) {
-            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
-            throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
+        // A fallback copy must never truncate or delete a pre-existing target.
+        // Publish a complete copy atomically from a temporary file in the same directory.
+        $temporaryPath = tempnam(dirname($targetPath), '.webrick-upload-');
+        if (!is_string($temporaryPath)) {
+            throw new RuntimeException("Cannot create temporary upload target for {$targetPath}");
         }
-        if (!self::attemptFilesystemOperation(static fn(): bool => unlink($sourcePath))) {
-            self::attemptFilesystemOperation(static fn(): bool => unlink($targetPath));
 
+        $published = false;
+
+        try {
+            if (!self::attemptFilesystemOperation(static fn(): bool => copy($sourcePath, $temporaryPath))) {
+                throw new RuntimeException("Failed to copy uploaded file to {$targetPath}");
+            }
+
+            if (!self::attemptFilesystemOperation(static fn(): bool => rename($temporaryPath, $targetPath))) {
+                throw new RuntimeException("Failed to publish uploaded file to {$targetPath}");
+            }
+            $published = true;
+        } finally {
+            if (!$published && is_file($temporaryPath)) {
+                self::attemptFilesystemOperation(static fn(): bool => unlink($temporaryPath));
+            }
+        }
+
+        // After publication, preserve the valid target even if source cleanup fails.
+        if (!self::attemptFilesystemOperation(static fn(): bool => unlink($sourcePath))) {
             throw new RuntimeException("Failed to remove uploaded source after copying to {$targetPath}");
         }
     }
 
-    /** @param resource $out */
+    /**
+     * @param resource $out
+     * @throws \RuntimeException
+     */
     private function writeStreamChunk($out, string $chunk, string $targetPath): void
     {
         $offset = 0;

@@ -19,7 +19,12 @@ use Psr\Log\NullLogger;
 /** Build-time matcher cache utility. No request kernel or DI runtime is booted. */
 final class RouteCache
 {
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function build(array $options): string
     {
         $logger = ($options['logger'] ?? null) instanceof LoggerInterface
@@ -83,7 +88,11 @@ final class RouteCache
             : $cacheLocation;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function clear(array $options): bool
     {
         $cachePath = self::stringOption($options, 'cache');
@@ -150,6 +159,9 @@ final class RouteCache
         return $classes;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearGeneration(string $generation): bool
     {
         $removed = RouteCacheCleaner::clearDirectoryPreservingGitignore($generation);
@@ -161,6 +173,9 @@ final class RouteCache
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearSharded(string $dir, bool $aggressive): bool
     {
         if ($aggressive) {
@@ -172,17 +187,22 @@ final class RouteCache
             $removed = RouteCacheCleaner::removeFile($dir . DIRECTORY_SEPARATOR . $known) || $removed;
         }
         $removed = self::clearShardFiles($dir) || $removed;
-        foreach (glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR) ?: [] as $generation) {
+        $generationDirs = glob($dir . DIRECTORY_SEPARATOR . 'generation-*', GLOB_ONLYDIR);
+        foreach ($generationDirs === false ? [] : $generationDirs as $generation) {
             $removed = self::clearGeneration($generation) || $removed;
         }
 
         return $removed;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function clearShardFiles(string $dir): bool
     {
         $removed = false;
-        foreach (glob($dir . DIRECTORY_SEPARATOR . '*.php') ?: [] as $php) {
+        $shardFiles = glob($dir . DIRECTORY_SEPARATOR . '*.php');
+        foreach ($shardFiles === false ? [] : $shardFiles as $php) {
             if (in_array(basename($php), ['__root.php', '__aliases.php', '__routes.php', '__generated.php'], true)) {
                 continue;
             }
@@ -243,7 +263,8 @@ final class RouteCache
             if (!preg_match('#^([/\\\\]|[A-Za-z]:[/\\\\])#', $path)) {
                 $path = $cwd . DIRECTORY_SEPARATOR . ltrim($path, '/\\');
             }
-            $path = realpath($path) ?: $path;
+            $resolved = realpath($path);
+            $path = $resolved === false ? $path : $resolved;
             if (!is_dir($path)) {
                 $logger->warning('[routecache] attribute dir not found', ['ns' => $namespace, 'dir' => $path]);
 
@@ -284,12 +305,16 @@ final class RouteCache
             return $baseDir;
         }
 
-        $absolute = realpath($routesFile) ?: $routesFile;
+        $resolved = realpath($routesFile);
+        $absolute = $resolved === false ? $routesFile : $resolved;
 
         return is_file($absolute) ? dirname($absolute) : $baseDir;
     }
 
-    /** @param array<string,mixed> $options */
+    /**
+     * @param array<string,mixed> $options
+     * @throws \InvalidArgumentException
+     */
     private static function resolveBuildCachePath(array $options): string
     {
         $cachePath = self::stringOption($options, 'cache');
@@ -303,6 +328,7 @@ final class RouteCache
     /**
      * @param array<string,mixed> $options
      * @return array{register:\Closure(Registrar):void,registrarOptions:array<string,mixed>,signKey:?string,signedDefaultTtl:int,signedUrlConfig:?SignedUrlConfig,urlBaseUri:string}
+     * @throws \InvalidArgumentException
      */
     private static function resolveBuildInputs(array $options, LoggerInterface $logger): array
     {
@@ -394,12 +420,16 @@ final class RouteCache
         return is_scalar($value) ? (string) $value : '';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function validateBuildRegisterInputs(mixed $userRegister, string $routesFile): void
     {
-        if ($userRegister && !$userRegister instanceof \Closure && !is_callable($userRegister)) {
+        $hasRegister = $userRegister !== null && $userRegister !== '';
+        if ($hasRegister && !is_callable($userRegister)) {
             throw new \InvalidArgumentException("RouteCache::build: 'register' must be callable.");
         }
-        if (!$userRegister && $routesFile === '') {
+        if (!$hasRegister && $routesFile === '') {
             throw new \InvalidArgumentException("RouteCache::build: provide 'register' callable or 'routes' file.");
         }
     }

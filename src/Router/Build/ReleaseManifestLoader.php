@@ -10,7 +10,12 @@ use UnexpectedValueException;
 /** Load release metadata from OPcache-friendly PHP with JSON fallback for compatibility. */
 final class ReleaseManifestLoader
 {
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function load(string $releaseManifestPath): array
     {
         $runtimePath = ReleaseCompiler::runtimeManifestPath($releaseManifestPath);
@@ -39,8 +44,25 @@ final class ReleaseManifestLoader
     }
 
     /**
+     * @param array<array-key,mixed> $metadata
+     * @throws \UnexpectedValueException
+     */
+    private static function assertOptionalSourceSha256(array $metadata, string $label): void
+    {
+        if (!array_key_exists('source_sha256', $metadata)) {
+            return;
+        }
+
+        $sourceSha256 = $metadata['source_sha256'];
+        if (!is_string($sourceSha256) || preg_match('/^[a-f0-9]{64}$/D', $sourceSha256) !== 1) {
+            throw new UnexpectedValueException("Malformed {$label} source SHA-256 metadata.");
+        }
+    }
+
+    /**
      * @param array<array-key,mixed> $manifest
      * @return array<string,mixed>
+     * @throws \UnexpectedValueException
      */
     private function validate(array $manifest): array
     {
@@ -66,6 +88,8 @@ final class ReleaseManifestLoader
             throw new UnexpectedValueException('Malformed InterMix release metadata.');
         }
 
+        self::assertOptionalSourceSha256($intermix, 'InterMix');
+
         $webrick = $manifest['webrick'];
         if (
             !is_string($webrick['path'] ?? null)
@@ -77,6 +101,8 @@ final class ReleaseManifestLoader
         ) {
             throw new UnexpectedValueException('Malformed Webrick router release metadata.');
         }
+
+        self::assertOptionalSourceSha256($webrick, 'Webrick');
 
         $normalized = [];
         foreach ($manifest as $key => $value) {

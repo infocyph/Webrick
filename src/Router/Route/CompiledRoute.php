@@ -50,7 +50,10 @@ final class CompiledRoute implements RouteInterface
         $this->handler = $handler;
     }
 
-    /** @param array<mixed> $data */
+    /**
+     * @param array<mixed> $data
+     * @throws \UnexpectedValueException
+     */
     public static function __set_state(array $data): self
     {
         return new self(
@@ -70,7 +73,10 @@ final class CompiledRoute implements RouteInterface
         );
     }
 
-    /** @param array<mixed> $payload */
+    /**
+     * @param array<mixed> $payload
+     * @throws \UnexpectedValueException
+     */
     public static function fromCachePayload(array $payload): self
     {
         $data = CompiledRouteCachePayload::validate($payload);
@@ -136,6 +142,7 @@ final class CompiledRoute implements RouteInterface
         return $this->corsPolicy;
     }
 
+    #[\Override]
     public function getHandlerId(): string
     {
         return Route::fingerprint($this->handler);
@@ -178,7 +185,10 @@ final class CompiledRoute implements RouteInterface
         return $this->dynamic;
     }
 
-    /** @return array<mixed> */
+    /**
+     * @return array<mixed>
+     * @throws \LogicException
+     */
     public function toCachePayload(): array
     {
         $handler = $this->handler;
@@ -195,6 +205,7 @@ final class CompiledRoute implements RouteInterface
     /**
      * @param array{0:string,1:string}|string $handler
      * @return array<mixed>
+     * @throws \LogicException
      */
     public function toCachePayloadWithHandler(array|string $handler): array
     {
@@ -238,20 +249,23 @@ final class CompiledRoute implements RouteInterface
         ];
     }
 
+    #[\Override]
     public function withDomain(?string $domain): self
     {
-        return new self(...$this->copyProps(domain: $domain));
+        return $this->copyWith(domain: $domain);
     }
 
     /** @param MiddlewareList $middleware */
+    #[\Override]
     public function withMiddleware(array $middleware): self
     {
-        return new self(...$this->copyProps(middleware: [...$this->middleware, ...$middleware]));
+        return $this->copyWith(middleware: [...$this->middleware, ...$middleware]);
     }
 
+    #[\Override]
     public function withName(string $name): self
     {
-        return new self(...$this->copyProps(name: $name));
+        return $this->copyWith(name: $name);
     }
 
     /** @param list<string> $patternBuf */
@@ -264,6 +278,7 @@ final class CompiledRoute implements RouteInterface
      * @param non-empty-string $name
      * @param ?non-empty-string $constraint
      * @return array{0:SegmentSpec,1:string}
+     * @throws \InvalidArgumentException
      */
     private static function buildVarSegment(string $name, ?string $constraint): array
     {
@@ -305,7 +320,10 @@ final class CompiledRoute implements RouteInterface
         return $segments;
     }
 
-    /** @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>} */
+    /**
+     * @return array{0:string,1:list<string>,2:true,3:list<SegmentSpec>}
+     * @throws \InvalidArgumentException
+     */
     private static function parseDynamicPath(string $path): array
     {
         $vars = [];
@@ -353,7 +371,12 @@ final class CompiledRoute implements RouteInterface
             return null;
         }
 
-        return [$matches[1], $matches[2] ?? null];
+        /** @var non-falsy-string $name */
+        $name = $matches[1];
+        /** @var ?non-empty-string $constraint */
+        $constraint = $matches[2] ?? null;
+
+        return [$name, $constraint];
     }
 
     /** @return array{0:string,1:list<string>,2:false,3:list<SegmentSpec>} */
@@ -370,6 +393,9 @@ final class CompiledRoute implements RouteInterface
         return strpbrk($value, '^$.[]|()?*+{}\\') !== false ? preg_quote($value, '#') : $value;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateBool(mixed $value): bool
     {
         if (!is_bool($value)) {
@@ -379,6 +405,9 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateCors(mixed $value): ?Cors
     {
         if ($value === null || $value instanceof Cors) {
@@ -388,19 +417,27 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid CORS policy in compiled route state.');
     }
 
-    /** @return array{object|string,string}|string|callable */
+    /**
+     * @return array{0:object|string,1:string}|string|callable
+     * @psalm-return array{0:object|string,1:string}|string|callable-object
+     * @phpstan-return array{0:object|string,1:string}|string|callable-object
+     * @throws \UnexpectedValueException
+     */
     private static function stateHandler(mixed $value): array|string|callable
     {
-        if (is_string($value) || is_callable($value)) {
+        if (is_string($value) || (is_object($value) && is_callable($value))) {
             return $value;
         }
-        if (is_array($value) && count($value) === 2 && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
-            return [$value[0], $value[1]];
+        if (is_array($value) && count($value) === 2 && isset($value[0], $value[1]) && (is_object($value[0]) || is_string($value[0])) && is_string($value[1])) {
+            return is_callable($value) ? $value : [$value[0], $value[1]];
         }
 
         throw new \UnexpectedValueException('Invalid handler in compiled route state.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateInt(mixed $value): int
     {
         if (!is_int($value)) {
@@ -410,7 +447,10 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
-    /** @return MiddlewareList */
+    /**
+     * @return MiddlewareList
+     * @throws \UnexpectedValueException
+     */
     private static function stateMiddleware(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -418,19 +458,15 @@ final class CompiledRoute implements RouteInterface
         }
         $middleware = [];
         foreach ($value as $entry) {
-            $descriptor = self::stateHandler($entry);
-            if (is_string($descriptor) || is_object($descriptor) || is_array($descriptor)) {
-                $middleware[] = $descriptor;
-
-                continue;
-            }
-
-            throw new \UnexpectedValueException('Invalid middleware descriptor in compiled route state.');
+            $middleware[] = self::stateHandler($entry);
         }
 
         return $middleware;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateNullableString(mixed $value): ?string
     {
         if ($value === null || is_string($value)) {
@@ -440,6 +476,9 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid nullable string in compiled route state.');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateProduces(mixed $value): ?Produces
     {
         if ($value === null || $value instanceof Produces) {
@@ -449,7 +488,10 @@ final class CompiledRoute implements RouteInterface
         throw new \UnexpectedValueException('Invalid Produces policy in compiled route state.');
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
+     */
     private static function stateSegments(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -461,6 +503,9 @@ final class CompiledRoute implements RouteInterface
         ])[13];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function stateString(mixed $value): string
     {
         if (!is_string($value)) {
@@ -470,7 +515,10 @@ final class CompiledRoute implements RouteInterface
         return $value;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \UnexpectedValueException
+     */
     private static function stateStringList(mixed $value): array
     {
         if (!is_array($value) || !array_is_list($value)) {
@@ -487,27 +535,26 @@ final class CompiledRoute implements RouteInterface
     /**
      * @param string|false|null $domain false means keep existing, null means clear
      * @param MiddlewareList|null $middleware
-     * @return array{0:string,1:string,2:array{0:object|string,1:string}|string|callable,3:?string,4:MiddlewareList,5:?string,6:bool,7:string,8:list<string>,9:int,10:?Cors,11:?Produces,12:list<SegmentSpec>}
      */
-    private function copyProps(
+    private function copyWith(
         string|false|null $domain = false,
         ?array $middleware = null,
         ?string $name = null,
-    ): array {
-        return [
-            $this->method,
-            $this->path,
-            $this->handler,
-            $domain === false ? $this->domain : $domain,
-            $middleware ?? $this->middleware,
-            $name ?? $this->name,
-            $this->dynamic,
-            $this->regex,
-            $this->variables,
-            $this->index,
-            $this->corsPolicy,
-            $this->produces,
-            $this->segments,
-        ];
+    ): self {
+        return new self(
+            method: $this->method,
+            path: $this->path,
+            handler: $this->handler,
+            domain: $domain === false ? $this->domain : $domain,
+            middleware: $middleware ?? $this->middleware,
+            name: $name ?? $this->name,
+            dynamic: $this->dynamic,
+            regex: $this->regex,
+            variables: $this->variables,
+            index: $this->index,
+            corsPolicy: $this->corsPolicy,
+            produces: $this->produces,
+            segments: $this->segments,
+        );
     }
 }

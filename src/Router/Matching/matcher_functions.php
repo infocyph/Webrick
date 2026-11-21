@@ -26,20 +26,51 @@ function matcher_should_warm_opcache(): bool
 }
 
 /**
+ * Allocate exclusive cache staging in the actual destination directory.
+ *
+ * @throws \RuntimeException
+ */
+function matcher_allocate_atomic_cache_stage(string $file): string
+{
+    $directory = realpath(dirname($file));
+    if (!is_string($directory)) {
+        throw new \RuntimeException('Generated cache destination directory is missing.');
+    }
+
+    $tmp = tempnam($directory, '.webrick-cache-');
+    if (!is_string($tmp)) {
+        throw new \RuntimeException('Failed to allocate cache staging file in destination directory.');
+    }
+    if (dirname($tmp) !== $directory) {
+        if (is_file($tmp)) {
+            unlink($tmp);
+        }
+
+        throw new \RuntimeException('Failed to allocate cache staging file in destination directory.');
+    }
+
+    return $tmp;
+}
+
+/**
  * Write generated PHP metadata, validate the staged executable artifact, and
  * only then atomically replace the active cache file.
  *
  * @param callable(array<mixed>):void $validate
+ * @throws \RuntimeException
  */
 function matcher_write_validated_atomic_php_file(string $file, string $php, callable $validate): void
 {
-    $tmp = $file . '.' . uniqid('', true) . '.tmp';
-    if (file_put_contents($tmp, $php, LOCK_EX) === false) {
-        throw new \RuntimeException("Failed to write cache temp file {$tmp}");
-    }
-    chmod($tmp, 0664);
+    $tmp = matcher_allocate_atomic_cache_stage($file);
 
     try {
+        if (file_put_contents($tmp, $php, LOCK_EX) === false || !chmod($tmp, 0644)) {
+            throw new \RuntimeException("Failed to write cache temp file {$tmp}");
+        }
+        if (!file_exists($tmp)) {
+            throw new \RuntimeException('Generated cache staging file is missing.');
+        }
+
         $blob = require $tmp;
         if (!is_array($blob)) {
             throw new \UnexpectedValueException('Generated cache file must return an array.');
@@ -62,6 +93,10 @@ function matcher_write_validated_atomic_php_file(string $file, string $php, call
     }
 }
 
+/**
+ * @throws \UnexpectedValueException
+ * @throws \InvalidArgumentException
+ */
 function matcher_materialize_cached_route(mixed $payload): CompiledRoute
 {
     if ($payload instanceof CompiledRoute) {
@@ -178,7 +213,13 @@ function sharded_matcher_shard_file_path(string $cacheDir, string $hostKey, stri
 }
 
 /**
+ * Only a single local cache filename component is returned: the loop drops
+ * path separators, colon, NUL and other non-[A-Za-z0-9_.-] bytes; leading
+ * dots and trailing dots/spaces are stripped. The cache directory must still
+ * be owned by the deployment, not the request.
+ *
  * @param list<string> $winReserved
+ * @psalm-taint-escape include
  */
 function sharded_matcher_sanitize_for_filename(string $value, array $winReserved): string
 {

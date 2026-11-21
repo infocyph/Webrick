@@ -64,7 +64,15 @@ Measure cache generation, cached kernel boot and matched-route dispatch as three
 
 Fused and Generated modes publish a single PHP matcher artifact. Sharded mode publishes an immutable generation through one atomic manifest switch, so a partial shard generation is never selected by a new kernel.
 
-For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The Webrick 6 trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; do not reintroduce request-time SHA-256/file hashing or JSON decoding into the prevalidated path.
+For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; current coordinated manifests also carry SHA-256 source identities for executable artifact verification.
+
+Use the prevalidated kernel entrypoint only with host-owned immutable release
+metadata. It still checks artifact bytes and expected identities before executing
+PHP. Keep those integrity checks when profiling or tuning bootstrap. Persistent
+workers pay bootstrap once per worker; ordinary SAPI pays it per request. Measure
+artifact verification, matcher preparation, matching, handler execution and
+response emission separately. Callback execution can occur inside a later stage's
+timing interval, so a post-callback dispatch marker alone is not total handler time.
 
 --------------
 

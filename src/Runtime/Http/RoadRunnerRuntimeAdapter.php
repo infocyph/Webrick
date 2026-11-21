@@ -25,7 +25,10 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
 
     private bool $sendfileMiddleware;
 
-    /** @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond */
+    /**
+     * @param callable(int,string|Generator,array<string,list<string>>,bool):void $respond
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         callable $respond,
         bool $sendfileMiddleware = false,
@@ -45,11 +48,17 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         $this->sendfileMiddleware = $sendfileMiddleware;
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function context(
         mixed $nativeRequest = null,
         mixed $nativeResponse = null,
@@ -97,6 +106,12 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $nativeRequest = $context->nativeRequest;
@@ -177,6 +192,8 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
     /**
      * @param array<array-key,mixed> $files
      * @return array<string,UploadedFile|array<array-key,mixed>>
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private static function mapUploadedFiles(array $files): array
     {
@@ -194,7 +211,11 @@ final readonly class RoadRunnerRuntimeAdapter implements RuntimeAdapterInterface
         return $out;
     }
 
-    /** @return UploadedFile|array<array-key,mixed>|null */
+    /**
+     * @return UploadedFile|array<array-key,mixed>|null
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private static function normaliseUploadedFile(mixed $file): UploadedFile|array|null
     {
         if (is_array($file)) {

@@ -20,6 +20,7 @@ final readonly class ErrorHandler
 {
     /**
      * @param array<string,int> $exceptionMap
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private LoggerInterface|\Closure|null $logger = null,
@@ -44,6 +45,9 @@ final readonly class ErrorHandler
 
     /**
      * @param callable(Request):Response $core
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function handle(Request $request, callable $core): Response
     {
@@ -54,7 +58,12 @@ final readonly class ErrorHandler
         }
     }
 
-    /** Render an already-known error without an additional throw/catch trampoline. */
+    /**
+     * Render an already-known error without an additional throw/catch trampoline.
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     public function renderThrowable(Request $request, Throwable $error): Response
     {
         $status = $this->resolveStatus($error);
@@ -79,6 +88,7 @@ final readonly class ErrorHandler
 
     /**
      * @return array<string,string>
+     * @throws \InvalidArgumentException
      */
     private function buildRenderHeaders(Request $request, Throwable $error): array
     {
@@ -166,6 +176,10 @@ final readonly class ErrorHandler
             || str_ends_with($type, '+xml');
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     private function log(Throwable $error, Request $request, int $status): void
     {
         $logger = $this->resolveLogger();
@@ -204,6 +218,10 @@ final readonly class ErrorHandler
         return null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function render(Request $request, Throwable $error, int $status): Response
     {
         $statusEnum = StatusEnum::tryFrom($status) ?? StatusEnum::INTERNAL_SERVER_ERROR;
@@ -240,6 +258,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderByType(
         string $wanted,
@@ -283,6 +303,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderJson(
         Throwable $error,
@@ -305,6 +327,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderPlain(
         Throwable $error,
@@ -329,6 +353,8 @@ final readonly class ErrorHandler
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function renderProblemJson(
         Request $request,
@@ -380,6 +406,9 @@ final readonly class ErrorHandler
         return $response instanceof Response ? $response : null;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function resolveLogger(): ?LoggerInterface
     {
         if ($this->logger instanceof LoggerInterface || $this->logger === null) {
@@ -405,6 +434,9 @@ final readonly class ErrorHandler
         return $message !== '' ? $message : $fallback;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveRenderType(Request $request): string
     {
         $negotiated = $request->getAttribute('negotiated.type');

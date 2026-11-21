@@ -36,6 +36,10 @@ require __DIR__ . '/vendor/autoload.php';
 /** Development front controller. Production uses CompiledRouterKernel. */
 final readonly class DemoController
 {
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function hello(Request $request, string $name): Response
     {
         return Response::json([
@@ -54,31 +58,55 @@ final readonly class DemoController
 
 final readonly class UsersController
 {
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function create(): Response
     {
         return Response::json(['action' => 'create']);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function destroy(string $id): Response
     {
         return Response::json(['action' => 'destroy', 'id' => $id]);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function edit(string $id): Response
     {
         return Response::json(['action' => 'edit', 'id' => $id]);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function index(): Response
     {
         return Response::json(['action' => 'index']);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function show(string $id): Response
     {
         return Response::json(['action' => 'show', 'id' => $id]);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function store(Request $request): Response
     {
         return Response::json(
@@ -87,6 +115,10 @@ final readonly class UsersController
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function update(Request $request, string $id): Response
     {
         return Response::json(['action' => 'update', 'id' => $id, 'data' => $request->all()]);
@@ -95,7 +127,8 @@ final readonly class UsersController
 
 $logger = new NullLogger();
 $signingKey = 'webrick-development-signing-key';
-$urlBaseUri = getenv('WEBRICK_URL_BASE_URI') ?: 'http://localhost:8000';
+$configuredUrlBaseUri = getenv('WEBRICK_URL_BASE_URI');
+$urlBaseUri = $configuredUrlBaseUri === false || $configuredUrlBaseUri === '' ? 'http://localhost:8000' : $configuredUrlBaseUri;
 $signedUrlConfig = new SignedUrlConfig(
     generationKey: $signingKey,
     verificationKeys: [$signingKey],

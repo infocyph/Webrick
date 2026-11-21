@@ -18,11 +18,13 @@ describe('ErrorHandler', function () {
 
         $response = (new ErrorHandler())->handle(
             $request,
-            static fn(): Response => throw HttpException::badRequest('Missing signature'),
+            static function (): Response {
+                throw HttpException::badRequest('Missing signature');
+            },
         );
 
-        expect($response)
-            ->toHaveStatus(400)
+        expect($response->getStatusCode())
+            ->toBe(400)
             ->and($response->getHeaderLine('Content-Type'))->toContain('text/plain')
             ->and((string) $response->getBody())->toContain('Missing signature');
     });
@@ -32,16 +34,18 @@ describe('ErrorHandler', function () {
 
         $response = (new ErrorHandler())->handle(
             $request,
-            static fn(): Response => throw HttpException::tooManyRequests('Too Many Requests', [
-                'Retry-After' => '30',
-                'X-RateLimit-Remaining' => '0',
-            ]),
+            static function (): Response {
+                throw HttpException::tooManyRequests('Too Many Requests', [
+                    'Retry-After' => '30',
+                    'X-RateLimit-Remaining' => '0',
+                ]);
+            },
         );
 
-        expect($response)
-            ->toHaveStatus(429)
-            ->toHaveHeader('Retry-After', '30')
-            ->toHaveHeader('X-RateLimit-Remaining', '0');
+        expect($response->getStatusCode())
+            ->toBe(429)
+            ->and($response->hasHeader('Retry-After'))->toBeTrue()
+            ->and($response->hasHeader('X-RateLimit-Remaining'))->toBeTrue();
     });
 
     it('supports a custom response renderer override', function () {
@@ -61,17 +65,19 @@ describe('ErrorHandler', function () {
                     'custom' => true,
                     'status' => $status,
                     'message' => $e->getMessage(),
-                ], $status, $headers);
+                ], $status, webrickTestHeaders($headers));
             },
         );
 
         $response = $handler->handle(
             $request,
-            static fn(): Response => throw HttpException::forbidden('Invalid signature'),
+            static function (): Response {
+                throw HttpException::forbidden('Invalid signature');
+            },
         );
 
-        expect($response)
-            ->toHaveStatus(403)
+        expect($response->getStatusCode())
+            ->toBe(403)
             ->and((string) $response->getBody())->toContain('"custom":true');
     });
 
@@ -87,7 +93,7 @@ describe('ErrorHandler', function () {
 
         $response = $handler->handle(Request::fake(), static fn(): Response => Response::json(['ok' => true]));
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($loggerResolutions)->toBe(0);
     });
 });

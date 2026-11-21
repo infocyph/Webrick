@@ -36,6 +36,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Throwable;
+use UnexpectedValueException;
 
 final class InfbyteEndToEndScopedMarker
 {
@@ -49,16 +50,19 @@ final class InfbyteEndToEndScopedMarker
 
 final class InfbyteEndToEndBody implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -66,6 +70,7 @@ final class InfbyteEndToEndBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -73,6 +78,7 @@ final class InfbyteEndToEndBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -80,12 +86,14 @@ final class InfbyteEndToEndBody implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -113,6 +121,7 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -125,16 +134,19 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -142,6 +154,7 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         $this->status = $status;
@@ -151,6 +164,7 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->chunks[] = $chunk;
@@ -169,6 +183,12 @@ final class InfbyteEndToEndWriter implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class InfbyteEndToEndAcceptanceTest extends TestCase
 {
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testInfbyteShapedRoutesAndRequestScopesRemainCleanOnOnePersistentApplication(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -184,6 +204,9 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
             $json = self::dispatch($application, '/json');
             self::assertSame(200, $json->status);
             $jsonPayload = json_decode($json->body(), true, flags: JSON_THROW_ON_ERROR);
+            if (!is_array($jsonPayload)) {
+                throw new UnexpectedValueException('Expected JSON object containing the memory metric.');
+            }
             self::assertArrayHasKey('memory', $jsonPayload);
             self::assertIsInt($jsonPayload['memory']);
             self::assertSame(1, $json->endCalls);
@@ -192,6 +215,9 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
             $scopeB = self::dispatch($application, '/api/runtime-scope');
             $payloadA = json_decode($scopeA->body(), true, flags: JSON_THROW_ON_ERROR);
             $payloadB = json_decode($scopeB->body(), true, flags: JSON_THROW_ON_ERROR);
+            if (!is_array($payloadA) || !is_array($payloadB)) {
+                throw new UnexpectedValueException('Expected JSON objects containing runtime scopes.');
+            }
 
             self::assertIsString($payloadA['scope'] ?? null);
             self::assertIsString($payloadB['scope'] ?? null);
@@ -206,7 +232,11 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         }
     }
 
-    /** @return array{\Infocyph\Runwire\Runtime\RuntimeApplicationInterface,list<string>} */
+    /**
+     * @return array{\Infocyph\Runwire\Runtime\RuntimeApplicationInterface,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -264,6 +294,10 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         return [$application, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function dispatch(
         \Infocyph\Runwire\Runtime\RuntimeApplicationInterface $application,
         string $target,
@@ -292,7 +326,10 @@ final class InfbyteEndToEndAcceptanceTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

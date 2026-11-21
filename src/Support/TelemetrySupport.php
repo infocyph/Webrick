@@ -11,6 +11,9 @@ use Stringable;
 
 final class TelemetrySupport
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function addCorrelationHeaders(
         Response $resp,
         bool $emitRequestId,
@@ -31,6 +34,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function addTimingHeaders(Response $resp, bool $addXResponseTime, bool $addServerTiming, float $durMs): Response
     {
         if ($addXResponseTime) {
@@ -45,6 +51,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function applyNelHeaders(
         Response $resp,
         ?string $nelGroup,
@@ -53,7 +62,8 @@ final class TelemetrySupport
         bool $nelIncludeSubdomains,
         bool $nelCollectSuccesses,
     ): Response {
-        if (!($nelGroup && $nelEndpoint)) {
+        if ($nelGroup === null || $nelGroup === '' || $nelGroup === '0'
+            || $nelEndpoint === null || $nelEndpoint === '' || $nelEndpoint === '0') {
             return $resp;
         }
 
@@ -80,6 +90,9 @@ final class TelemetrySupport
         return $resp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function deriveRequestId(
         Request $req,
         bool $emitRequestId,
@@ -97,13 +110,12 @@ final class TelemetrySupport
             }
         }
 
-        try {
-            return bin2hex(random_bytes(16));
-        } catch (\Throwable) {
-            return str_replace('.', '', uniqid('', true));
-        }
+        return bin2hex(random_bytes(16));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function logAccess(
         LoggerInterface $log,
         Request $req,
@@ -114,14 +126,19 @@ final class TelemetrySupport
         ?string $requestId,
         string $mode,
     ): void {
+        if ($log::class === \Psr\Log\NullLogger::class) {
+            return;
+        }
+
         $clientIp = $req->getAttribute('client_ip');
         $remoteAddr = $req->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = \is_string($clientIp)
             ? $clientIp
             : (\is_string($remoteAddr) ? $remoteAddr : '-');
+        $ip = substr(str_replace(["\r", "\n"], ['\\r', '\\n'], $ip), 0, 128);
         $fromProxy = $req->getAttribute('is_trusted_proxy') === true ? 'proxy' : 'direct';
         $method = $req->getMethod();
-        $path = $req->getUri()->getPath() ?: '/';
+        $path = substr(str_replace(["\r", "\n"], ['\\r', '\\n'], $req->getUri()->getPath() ?: '/'), 0, 2048);
         $code = $resp->getStatusCode();
         $lenHeader = $resp->getHeaderLine('Content-Length');
         $len = $lenHeader !== '' ? $lenHeader : ($resp->getBody()->getSize() ?? '-');

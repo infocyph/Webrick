@@ -12,6 +12,13 @@ use PhpBench\Attributes as Bench;
 #[Bench\Revs(1)]
 final class MatcherMemoryBench
 {
+    /**
+     * @param array{matcher:string,size:int} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideRouteScales')]
     public function benchMatcherBuild(array $params): void
     {
@@ -19,7 +26,7 @@ final class MatcherMemoryBench
             memory_reset_peak_usage();
         }
 
-        BenchmarkSupport::freshSyntheticMatcher((int) $params['size'], (string) $params['matcher']);
+        BenchmarkSupport::freshSyntheticMatcher($params['size'], $params['matcher']);
     }
 
     /** @return iterable<string, array{matcher:string,size:int}> */

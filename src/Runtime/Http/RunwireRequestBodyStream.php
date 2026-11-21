@@ -26,11 +26,13 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->closed ? '' : $this->getContents();
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->closed = true;
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         $this->close();
@@ -38,11 +40,19 @@ final class RunwireRequestBodyStream implements BodyStream
         return null;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->closed || $this->body->eof();
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
+     */
+    #[\Override]
     public function getContents(): string
     {
         $this->assertOpen();
@@ -57,6 +67,43 @@ final class RunwireRequestBodyStream implements BodyStream
         return $contents;
     }
 
+    /**
+     * Read a request body up to a strict memory ceiling. Null means the
+     * transport supplied more bytes than allowed; the caller must reject
+     * the request rather than continue with a partially parsed form.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
+     */
+    public function getContentsUpTo(int $maxBytes): ?string
+    {
+        if ($maxBytes <= 0) {
+            throw new \InvalidArgumentException('Maximum request-body bytes must be positive.');
+        }
+
+        $this->assertOpen();
+        $knownSize = $this->getSize();
+        if ($knownSize !== null && $knownSize > $maxBytes) {
+            return null;
+        }
+
+        $contents = '';
+        while (!$this->eof()) {
+            $remaining = $maxBytes - strlen($contents);
+            $chunk = $this->read(min(65_536, $remaining > 0 ? $remaining : 1));
+            $contents .= $chunk;
+            if (strlen($contents) > $maxBytes) {
+                return null;
+            }
+        }
+
+        return $contents;
+    }
+
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         $metadata = [
@@ -70,6 +117,7 @@ final class RunwireRequestBodyStream implements BodyStream
         return $key === null ? $metadata : ($metadata[$key] ?? null);
     }
 
+    #[\Override]
     public function getSize(): ?int
     {
         if ($this->closed || $this->body->trailers() === null) {
@@ -79,21 +127,31 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->body->receivedBytes();
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return !$this->closed;
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         return false;
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return false;
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \OverflowException
+     */
+    #[\Override]
     public function read(int $length): string
     {
         $this->assertOpen();
@@ -120,11 +178,13 @@ final class RunwireRequestBodyStream implements BodyStream
         }
     }
 
+    #[\Override]
     public function rewind(): void
     {
         throw new RuntimeException('Runwire request body streams are not seekable.');
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         unset($offset, $whence);
@@ -132,6 +192,8 @@ final class RunwireRequestBodyStream implements BodyStream
         throw new RuntimeException('Runwire request body streams are not seekable.');
     }
 
+    /** @throws \RuntimeException */
+    #[\Override]
     public function tell(): int
     {
         $this->assertOpen();
@@ -139,6 +201,7 @@ final class RunwireRequestBodyStream implements BodyStream
         return $this->position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         unset($string);
@@ -146,6 +209,9 @@ final class RunwireRequestBodyStream implements BodyStream
         throw new RuntimeException('Runwire request body streams are read-only.');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertOpen(): void
     {
         if ($this->closed) {

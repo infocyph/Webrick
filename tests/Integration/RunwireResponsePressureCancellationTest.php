@@ -21,16 +21,19 @@ use PHPUnit\Framework\TestCase;
 
 final class PressureCancellationBody implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -38,6 +41,7 @@ final class PressureCancellationBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -45,6 +49,7 @@ final class PressureCancellationBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -52,12 +57,14 @@ final class PressureCancellationBody implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -76,12 +83,29 @@ final class PressureCancellationWriter implements ResponseWriterInterface
 
     public int $writeCalls = 0;
 
+
+    public function writeCount(): int
+    {
+        return $this->writeCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
+    public function startCount(): int
+    {
+        return $this->startCalls;
+    }
+
     private ?Closure $drainCallback = null;
 
     private bool $ended = false;
 
     private bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -94,16 +118,19 @@ final class PressureCancellationWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         $this->drainCallback = Closure::fromCallable($callback);
@@ -111,6 +138,7 @@ final class PressureCancellationWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -120,6 +148,7 @@ final class PressureCancellationWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         ++$this->writeCalls;
@@ -139,6 +168,14 @@ final class PressureCancellationWriter implements ResponseWriterInterface
 
 final class RunwireResponsePressureCancellationTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testCancellationReleasesAResponseSuspendedOnTransportPressure(): void
     {
         $adapter = new RunwireRuntimeAdapter();
@@ -164,10 +201,10 @@ final class RunwireResponsePressureCancellationTest extends TestCase
             $application->start();
             $application->handle($request, $writer, completeResponse: true);
 
-            self::assertSame(1, $writer->startCalls);
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->startCount());
+            self::assertSame(1, $writer->writeCount());
             self::assertSame(['first'], $writer->chunks);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->endCount());
             self::assertTrue($writer->waitingForDrain());
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertFalse($request->context->completed());
@@ -176,9 +213,9 @@ final class RunwireResponsePressureCancellationTest extends TestCase
 
             self::assertTrue($request->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $request->context->cancellation->reason());
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->writeCount());
             self::assertSame(['first'], $writer->chunks);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->endCount());
             self::assertSame(1, $application->snapshot()->requestsTotal);
             self::assertSame(0, $application->snapshot()->requestsActive);
         } finally {

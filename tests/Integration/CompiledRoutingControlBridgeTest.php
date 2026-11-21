@@ -36,10 +36,18 @@ final readonly class CompiledBoundRouteIdentifier
 {
     public function __construct(public string $value = 'unbound') {}
 
+    /**
+     * @throws \DomainException If a route identifier does not exist.
+     * @throws \InvalidArgumentException For invalid route identifier input.
+     */
     public static function fromBoundValue(mixed $value): self
     {
         if ($value === 'missing') {
             throw new \DomainException('Route identifier was not found.');
+        }
+
+        if (!is_string($value) && !is_int($value)) {
+            throw new \InvalidArgumentException('Compiled route identifier must be a string or integer path value.');
         }
 
         return new self((string) $value);
@@ -50,6 +58,10 @@ final readonly class CompiledNativeRequestController
 {
     public function __construct(private Request $request) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $request, CompiledBoundRouteIdentifier $id): Response
     {
         return Response::plaintext($id->value . '|' . $this->request->getUri()->getPath()
@@ -61,6 +73,10 @@ final readonly class CompiledFastPathScopedHandler
 {
     public function __construct(private CompiledFastPathScopedMarker $marker) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(): Response
     {
         return Response::plaintext($this->marker::class, 200);
@@ -70,6 +86,12 @@ final readonly class CompiledFastPathScopedHandler
 final class CompiledFastPathScopeProbe
 {
     public static int $leaves = 0;
+
+
+    public static function leaveCount(): int
+    {
+        return self::$leaves;
+    }
 
     public static function scopeLeft(string $scope, RuntimeContainerInterface $container): void
     {
@@ -85,6 +107,52 @@ final class CompiledFastPathScopeProbe
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class CompiledRoutingControlBridgeTest extends TestCase
 {
+    /**
+     * Validate the exact manifest fixture fields consumed by compiled-boot tests.
+     *
+     * @param array<string,mixed> $manifest
+     * @phpstan-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,source_sha256?:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,source_sha256?:string,fingerprint:string}} $manifest
+     * @psalm-assert array{format:int,environment:string,config_fingerprint:string,intermix:array{path:string,digest:string,source_sha256?:string,graph:string,build:string,compiled:array<array-key,mixed>,skipped:array<array-key,mixed>},webrick:array{path:string,digest:string,source_sha256?:string,fingerprint:string}} $manifest
+     * @throws \UnexpectedValueException For a missing or malformed expected fixture field.
+     */
+    private static function assertReleaseFixture(array $manifest): void
+    {
+        if (
+            !is_int($manifest['format'] ?? null)
+            || !is_string($manifest['environment'] ?? null)
+            || !is_string($manifest['config_fingerprint'] ?? null)
+            || !is_array($manifest['intermix'] ?? null)
+            || !is_array($manifest['webrick'] ?? null)
+            || !is_string($manifest['intermix']['path'] ?? null)
+            || !is_string($manifest['intermix']['digest'] ?? null)
+            || !is_string($manifest['intermix']['graph'] ?? null)
+            || !is_string($manifest['intermix']['build'] ?? null)
+            || !is_array($manifest['intermix']['compiled'] ?? null)
+            || !is_array($manifest['intermix']['skipped'] ?? null)
+            || !is_string($manifest['webrick']['path'] ?? null)
+            || !is_string($manifest['webrick']['digest'] ?? null)
+            || !is_string($manifest['webrick']['fingerprint'] ?? null)
+        ) {
+            throw new \UnexpectedValueException('Compiled release fixture has an invalid manifest shape.');
+        }
+        if (array_key_exists('source_sha256', $manifest['intermix'])
+            && !is_string($manifest['intermix']['source_sha256'])
+        ) {
+            throw new \UnexpectedValueException('Compiled InterMix source checksum is invalid.');
+        }
+        if (array_key_exists('source_sha256', $manifest['webrick'])
+            && !is_string($manifest['webrick']['source_sha256'])
+        ) {
+            throw new \UnexpectedValueException('Compiled Webrick source checksum is invalid.');
+        }
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     public function testCoordinatedReleaseBootRejectsStaleAndObsoleteMetadata(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('release');
@@ -107,9 +175,16 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 postGlobalTags: [],
             );
 
+            self::assertReleaseFixture($manifest);
             self::assertSame(ReleaseCompiler::RELEASE_FORMAT, $manifest['format']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['graph']);
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $manifest['intermix']['build']);
+            $intermixTarget = realpath($intermixPath);
+            if (!is_string($intermixTarget)) {
+                throw new \RuntimeException('Compiled InterMix release fixture is missing.');
+            }
+            self::assertSame(hash_file('sha256', $intermixTarget), $manifest['intermix']['source_sha256'] ?? null);
+            self::assertSame(hash_file('sha256', $routerPath), $manifest['webrick']['source_sha256'] ?? null);
 
             $kernel = CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),
@@ -134,7 +209,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             );
 
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('InterMix release build identity mismatch');
+            $this->expectExceptionMessageMatches('/InterMix release build identity mismatch/');
 
             CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),
@@ -154,6 +229,257 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * Reject manifest-selected stream wrappers before any hash_file call or PHP execution.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleaseRejectsNonLocalRouterPathsBeforeHashing(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('nonlocal-router');
+        $releasePath = $routerPath . '.release.json';
+        $builder = ContainerBuilder::create('webrick_nonlocal_router_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/static', static fn(): Response => Response::plaintext('ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'nonlocal-router',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+
+            $webrick = $manifest['webrick'] ?? null;
+            if (!is_array($webrick)) {
+                throw new \RuntimeException('Compiled release manifest must contain Webrick artifact metadata.');
+            }
+
+            foreach ([
+                'php://filter/resource=/etc/passwd',
+                'phar://untrusted.phar/routes.php',
+                'https://example.invalid/compiled.php',
+                '//untrusted.invalid/share/compiled.php',
+                chr(92) . chr(92) . 'untrusted.invalid' . chr(92) . 'share' . chr(92) . 'compiled.php',
+                $routerPath . chr(0) . '.php',
+            ] as $untrustedPath) {
+                $altered = $manifest;
+                $altered['webrick'] = array_replace($webrick, [
+                    'path' => $untrustedPath,
+                    'meta' => $untrustedPath . '.meta.json',
+                ]);
+                $altered['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($altered);
+                if (file_put_contents($releasePath, json_encode($altered, JSON_THROW_ON_ERROR)) === false) {
+                    throw new \RuntimeException('Unable to write non-local release manifest fixture.');
+                }
+
+                try {
+                    CompiledRouterKernel::fromReleaseManifest(
+                        log: new NullLogger(),
+                        matcher: FusedMatcher::make(),
+                        builder: $builder,
+                        releaseManifestPath: $releasePath,
+                        environment: 'production',
+                        configFingerprint: 'nonlocal-router',
+                    );
+                    self::fail('Expected coordinated release to reject non-local router paths before hashing.');
+                } catch (\UnexpectedValueException $exception) {
+                    self::assertStringContainsString('must use a local filesystem path', $exception->getMessage());
+                }
+            }
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
+    /**
+     * The release manifest must reject altered executable router bytes even
+     * when the attacker also updates the artifact's adjacent metadata digest.
+     *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleaseChecksRouterBytesBeforeExecution(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('tampered-router');
+        $releasePath = $routerPath . '.release.json';
+        $markerPath = $routerPath . '.executed';
+        $builder = ContainerBuilder::create('webrick_tampered_router_' . bin2hex(random_bytes(4)));
+
+        try {
+            new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/static', static fn(): Response => Response::plaintext('ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'tampered-router',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+
+            $source = file_get_contents($routerPath);
+            $prologue = "<?php\n\ndeclare(strict_types=1);\n\n";
+            if (!is_string($source) || !str_starts_with($source, $prologue)) {
+                throw new \RuntimeException('Compiled router fixture must begin with the strict PHP declaration.');
+            }
+
+            $tampered = $prologue . 'file_put_contents('
+                . var_export($markerPath, true)
+                . ", 'executed');\n"
+                . substr($source, strlen($prologue));
+            if (file_put_contents($routerPath, $tampered) === false) {
+                throw new \RuntimeException('Unable to prepare altered router artifact fixture.');
+            }
+
+            $metaPath = $routerPath . '.meta.json';
+            $metaJson = file_get_contents($metaPath);
+            if (!is_string($metaJson)) {
+                throw new \RuntimeException('Unable to read compiled router fixture metadata.');
+            }
+            $meta = json_decode($metaJson, true, 32, JSON_THROW_ON_ERROR);
+            if (!is_array($meta)) {
+                throw new \RuntimeException('Compiled router fixture metadata is malformed.');
+            }
+            // The sibling metadata is attacker-controlled; the release manifest is not.
+            $meta['digest'] = hash('xxh128', $tampered);
+            if (file_put_contents($metaPath, json_encode($meta, JSON_THROW_ON_ERROR)) === false) {
+                throw new \RuntimeException('Unable to prepare altered router metadata fixture.');
+            }
+
+            try {
+                CompiledRouterKernel::fromReleaseManifest(
+                    log: new NullLogger(),
+                    matcher: FusedMatcher::make(),
+                    builder: $builder,
+                    releaseManifestPath: $releasePath,
+                    environment: 'production',
+                    configFingerprint: 'tampered-router',
+                );
+                self::fail('Expected the trusted release manifest to reject altered executable router bytes.');
+            } catch (\RuntimeException $exception) {
+                self::assertStringContainsString(
+                    'Webrick router artifact digest does not match the coordinated release.',
+                    $exception->getMessage(),
+                );
+            }
+
+            self::assertFileDoesNotExist($markerPath);
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$markerPath, $releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Keep format-3 release bundles loadable while requiring the stronger
+     * pre-execution digest whenever the manifest supplies source_sha256.
+     *
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
+    public function testCoordinatedReleasePreservesLegacySourceDigestFallback(): void
+    {
+        [$intermixPath, $routerPath] = self::artifactPaths('legacy-source-digest');
+        $releasePath = $routerPath . '.release.json';
+        $builder = ContainerBuilder::create('webrick_legacy_source_' . bin2hex(random_bytes(4)));
+
+        try {
+            $manifest = new ReleaseCompiler()->compile(
+                builder: $builder,
+                register: static function (Registrar $registrar): void {
+                    $registrar->get('/legacy', static fn(): Response => Response::plaintext('legacy-ok', 200));
+                },
+                environment: 'production',
+                configFingerprint: 'legacy-source',
+                intermixPath: $intermixPath,
+                routerPath: $routerPath,
+                releaseManifestPath: $releasePath,
+                preGlobalTags: [],
+                postGlobalTags: [],
+            );
+            self::assertReleaseFixture($manifest);
+
+            // Deliberately wrong but syntactically valid SHA: legacy xxh128 still matches.
+            $manifest['webrick']['source_sha256'] = str_repeat('0', 64);
+            $manifest['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($manifest);
+            file_put_contents($releasePath, json_encode($manifest, JSON_THROW_ON_ERROR));
+
+            try {
+                CompiledRouterKernel::fromReleaseManifest(
+                    log: new NullLogger(),
+                    matcher: FusedMatcher::make(),
+                    builder: $builder,
+                    releaseManifestPath: $releasePath,
+                    environment: 'production',
+                    configFingerprint: 'legacy-source',
+                );
+                self::fail('Expected SHA-256 mismatch before executable router load.');
+            } catch (\RuntimeException $exception) {
+                self::assertStringContainsString(
+                    'Webrick router artifact digest does not match the coordinated release.',
+                    $exception->getMessage(),
+                );
+            }
+
+            // A previous format-3 manifest without SHA fields remains supported.
+            unset($manifest['intermix']['source_sha256'], $manifest['webrick']['source_sha256']);
+            $manifest['release_fingerprint'] = ReleaseCompiler::fingerprintManifest($manifest);
+            file_put_contents($releasePath, json_encode($manifest, JSON_THROW_ON_ERROR));
+
+            $kernel = CompiledRouterKernel::fromReleaseManifest(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                builder: $builder,
+                releaseManifestPath: $releasePath,
+                environment: 'production',
+                configFingerprint: 'legacy-source',
+            );
+
+            self::assertSame(
+                'legacy-ok',
+                (string) $kernel->handle(Request::fake(uri: 'http://localhost/legacy'))->getBody(),
+            );
+        } finally {
+            self::cleanup([$intermixPath, $routerPath]);
+            foreach ([$releasePath, ReleaseCompiler::runtimeManifestPath($releasePath)] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+        }
+    }
+
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function testCoordinatedReleaseRejectsObsoleteManifestFormat(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('obsolete-release');
@@ -182,7 +508,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
             );
 
             $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage('Unsupported Webrick coordinated release manifest format');
+            $this->expectExceptionMessageMatches('/Unsupported Webrick coordinated release manifest format/');
 
             CompiledRouterKernel::fromReleaseManifest(
                 log: new NullLogger(),
@@ -214,6 +540,12 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     #[DataProvider('compiledReleaseBootModes')]
     public function testDirectCompiledFastPathsRemainScopeless(string $matcherMode, string $manifestRepresentation, bool $trusted): void
     {
@@ -265,12 +597,14 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
             }
             $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertReleaseFixture($release);
             self::assertArrayHasKey('789', $release['intermix']['skipped']);
             self::assertSame('numeric-service', $builder->production($intermixPath)->get('789'));
             $matcher = match ($matcherMode) {
                 'fused' => FusedMatcher::make(),
                 'generated' => GeneratedMatcher::make(),
                 'sharded' => ShardedMatcher::make(),
+                default => throw new \UnexpectedValueException('Unsupported matcher fixture mode.'),
             };
             $kernel = $trusted
                 ? CompiledRouterKernel::fromPrevalidatedArtifact(
@@ -292,16 +626,16 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 );
 
             self::assertSame('zero', (string) $kernel->handle(Request::fake(uri: 'http://localhost/zero'))->getBody());
-            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(0, CompiledFastPathScopeProbe::leaveCount());
 
             self::assertSame('42', (string) $kernel->handle(Request::fake(uri: 'http://localhost/arg/42'))->getBody());
-            self::assertSame(0, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(0, CompiledFastPathScopeProbe::leaveCount());
             self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('123', ['id' => '42']));
             self::assertSame('/arg/42', UrlGeneratorRegistry::get()->urlFor('456', ['id' => '42']));
 
             $scoped = $kernel->handle(Request::fake(uri: 'http://localhost/scoped'));
             self::assertSame(CompiledFastPathScopedMarker::class, (string) $scoped->getBody());
-            self::assertSame(1, CompiledFastPathScopeProbe::$leaves);
+            self::assertSame(1, CompiledFastPathScopeProbe::leaveCount());
         } finally {
             CompiledFastPathScopeProbe::$leaves = 0;
             self::cleanup([$intermixPath, $routerPath]);
@@ -313,6 +647,12 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     #[DataProvider('compiledReleaseBootModes')]
     public function testNativeRequestInputsAndHostAutoBindingSurviveCompiledBoot(
         string $matcherMode,
@@ -350,6 +690,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 unlink(ReleaseCompiler::runtimeManifestPath($releasePath));
             }
             $release = new ReleaseManifestLoader()->load($releasePath);
+            self::assertReleaseFixture($release);
             self::assertContains(Request::class, $release['intermix']['compiled']);
             self::assertSame([], $release['intermix']['skipped']);
             $container = $trusted
@@ -360,6 +701,7 @@ final class CompiledRoutingControlBridgeTest extends TestCase
                 'fused' => FusedMatcher::make(),
                 'generated' => GeneratedMatcher::make(),
                 'sharded' => ShardedMatcher::make(),
+                default => throw new \UnexpectedValueException('Unsupported matcher fixture mode.'),
             };
             $kernel = CompiledRouterKernel::fromPrevalidatedArtifact(
                 log: new NullLogger(),
@@ -401,6 +743,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public function testDevelopmentBindingUsesTheHostsOptInSetting(): void
     {
         foreach ([null, false, true] as $enabled) {
@@ -436,6 +783,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public function testDefaultRoutingControlsStayIndependentFromApplicationErrors(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('default');
@@ -484,6 +836,11 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public function testRoutingControlsUseApplicationErrorHandlerOnlyWhenEnabled(): void
     {
         [$intermixPath, $routerPath] = self::artifactPaths('opt-in');
@@ -538,7 +895,10 @@ final class CompiledRoutingControlBridgeTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

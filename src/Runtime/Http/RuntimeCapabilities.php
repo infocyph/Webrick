@@ -9,6 +9,9 @@ final readonly class RuntimeCapabilities
 {
     public const string ATTRIBUTE = 'webrick.runtime_capabilities';
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         public string $name,
         public bool $persistent = false,

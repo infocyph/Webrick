@@ -8,7 +8,10 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 
-/** @param array<string, mixed> $server */
+/**
+ * @param array<string, mixed> $server
+ * @throws \InvalidArgumentException
+ */
 function gatewayRequest(array $server, string $uri = 'http://origin.example/resource'): Request
 {
     return new Request('GET', new Uri($uri), $server);
@@ -135,7 +138,14 @@ test('gateway preserves intentional host and port semantics', function (array $s
         enforceHttps: false,
     );
 
-    $gateway(gatewayRequest($server), static function (Request $normalized) use ($expected): Response {
+    $validatedServer = [];
+    foreach ($server as $key => $value) {
+        if (!is_string($key) || !is_string($value)) {
+            throw new UnexpectedValueException('Gateway fixture server entries must be strings.');
+        }
+        $validatedServer[$key] = $value;
+    }
+    $gateway(gatewayRequest($validatedServer), static function (Request $normalized) use ($expected): Response {
         expect((string) $normalized->getUri())->toBe($expected);
 
         return Response::json(['ok' => true]);

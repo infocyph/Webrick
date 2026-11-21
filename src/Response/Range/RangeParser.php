@@ -11,6 +11,7 @@ use Infocyph\Webrick\Response\Headers\Range;
  */
 final class RangeParser
 {
+    /** @throws \InvalidArgumentException */
     public static function parse(string $raw, int $resourceLen): RangeParseResult
     {
         $raw = trim($raw);
@@ -27,6 +28,7 @@ final class RangeParser
         return self::parseSpec(trim($unitMatch[1]), $resourceLen);
     }
 
+    /** @throws \InvalidArgumentException */
     private static function parseSpec(string $spec, int $resourceLen): RangeParseResult
     {
         if (str_contains($spec, ',')) {

@@ -50,6 +50,7 @@ final readonly class CompiledCollection implements IteratorAggregate
      *
      * @return Traversable<int, CompiledRoute> Iterator over CompiledRoute items.
      */
+    #[\Override]
     public function getIterator(): Traversable
     {
         /** @var \ArrayIterator<int, CompiledRoute> $iterator */

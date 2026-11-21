@@ -1,0 +1,26 @@
+name: HTTP A/A Measurement Control
+
+# Diagnostic only. Runs on changes to the measurement control and can be
+# requested manually; it does not certify a Webrick release.
+on:
+  push:
+    branches:
+      - feature/risk-admission
+    paths:
+      - ".github/workflows/http-aa-control.yml"
+      - ".github/workflows/runtime-release-certification.yml"
+      - ".github/certification/load-benchmark.sh"
+      - ".github/certification/load-concurrency.sh"
+      - ".github/certification/test-load-pairing.sh"
+      - ".github/certification/load-source-control.sh"
+      - ".github/certification/test-load-source-control.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  identical-source-control:
+    uses: ./.github/workflows/runtime-release-certification.yml
+    with:
+      aa_control: true

@@ -23,12 +23,12 @@ final class PhpErrorBridge
         }
 
         set_error_handler(
-            static function (int $severity, string $message, ?string $file = null, ?int $line = null): bool {
+            static function (int $severity, string $message, string $file, int $line): bool {
                 if (!(error_reporting() & $severity)) {
                     return false;
                 }
 
-                throw new ErrorException($message, 0, $severity, $file ?? 'unknown', $line ?? 0);
+                throw new ErrorException($message, 0, $severity, $file, $line);
             },
         );
         $this->installed = true;

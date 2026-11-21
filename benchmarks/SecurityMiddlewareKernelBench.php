@@ -35,6 +35,21 @@ final class SecurityMiddlewareKernelBench
 
     private Request $proxy;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public function setUp(): void
     {
         $pool = Cache::memory('webrick.benchmark.security');
@@ -72,18 +87,30 @@ final class SecurityMiddlewareKernelBench
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchAnonymousCacheHit(): void
     {
         $this->kernel->handle($this->cached);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchConditionalRequest(): void
     {
         $this->kernel->handle($this->conditional);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchTrustedProxyRequest(): void
     {

@@ -18,8 +18,13 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class CacheLifecycleBench
 {
-    private string $directory;
+    private string $directory = '';
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     public function setUp(): void
     {
         $this->directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webrick-bench-' . uniqid('', true);
@@ -29,6 +34,10 @@ final class CacheLifecycleBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function tearDown(): void
     {
         RouteCache::clear([
@@ -41,6 +50,11 @@ final class CacheLifecycleBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchFusedCacheBuild(): void
@@ -48,6 +62,9 @@ final class CacheLifecycleBench
         $this->build('fused');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchFusedCachedBoot(): void
@@ -55,6 +72,9 @@ final class CacheLifecycleBench
         $this->boot(FusedMatcher::make(), $this->path('fused'));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchFusedCachedFirstRequest(): void
@@ -62,6 +82,11 @@ final class CacheLifecycleBench
         $this->firstRequest(FusedMatcher::make(), $this->path('fused'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchGeneratedCacheBuild(): void
@@ -69,6 +94,9 @@ final class CacheLifecycleBench
         $this->build('generated');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchGeneratedCachedBoot(): void
@@ -76,6 +104,9 @@ final class CacheLifecycleBench
         $this->boot(GeneratedMatcher::make(), $this->path('generated'));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchGeneratedCachedFirstRequest(): void
@@ -83,6 +114,11 @@ final class CacheLifecycleBench
         $this->firstRequest(GeneratedMatcher::make(), $this->path('generated'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchShardedCacheBuild(): void
@@ -90,6 +126,9 @@ final class CacheLifecycleBench
         $this->build('sharded');
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchShardedCachedBoot(): void
@@ -97,6 +136,9 @@ final class CacheLifecycleBench
         $this->boot(ShardedMatcher::make(), $this->directory);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\AfterMethods('tearDown')]
     public function benchShardedCachedFirstRequest(): void
@@ -104,6 +146,9 @@ final class CacheLifecycleBench
         $this->firstRequest(ShardedMatcher::make(), $this->directory);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function boot(MatcherInterface $matcher, string $cache): void
     {
         $matcher->enableCache($cache);
@@ -115,6 +160,11 @@ final class CacheLifecycleBench
         $matcher->finalize();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     private function build(string $mode): void
     {
         RouteCache::build([
@@ -127,6 +177,9 @@ final class CacheLifecycleBench
         ]);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function firstRequest(MatcherInterface $matcher, string $cache): void
     {
         $this->boot($matcher, $cache);

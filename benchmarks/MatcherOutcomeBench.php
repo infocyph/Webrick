@@ -13,15 +13,16 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherOutcomeBench
 {
+    /** @param array{matcher:string,route_set:string,method:non-empty-string,host:non-empty-string,path:non-empty-string} $params */
     #[Bench\ParamProviders('provideOutcomeCases')]
     public function benchCompiledOutcome(array $params): void
     {
-        BenchmarkSupport::matcher((string) $params['route_set'], (string) $params['matcher'])
-            ->matchCompiled((string) $params['method'], (string) $params['host'], (string) $params['path']);
+        BenchmarkSupport::matcher($params['route_set'], $params['matcher'])
+            ->matchCompiled($params['method'], $params['host'], $params['path']);
     }
 
     /**
-     * @return iterable<string, array{matcher:string,route_set:string,method:string,host:string,path:string}>
+     * @return iterable<string, array{matcher:string,route_set:string,method:non-empty-string,host:non-empty-string,path:non-empty-string}>
      */
     public function provideOutcomeCases(): iterable
     {

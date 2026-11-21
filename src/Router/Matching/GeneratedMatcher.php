@@ -39,18 +39,31 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->index = new CanonicalMatcherIndex();
+    }
+
+    /**
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function add(CompiledRoute $route): void
     {
         if ($this->finalized) {
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $this->index->add($this->canonicalRouteHost($route->getDomain()), $route);
         matcher_capture_route_alias($this->alias, $route);
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
+    #[\Override]
     public function finalize(): void
     {
         if ($this->finalized) {
@@ -63,7 +76,6 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {
             $this->dumpCache();
         }
@@ -77,6 +89,14 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
@@ -96,6 +116,7 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
         $fn = $this->compiledFn ?? throw new \LogicException('Generated matcher must be finalized before compiled dispatch.');
@@ -103,6 +124,8 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $fn($method, $host, $path, true);
     }
 
+    /** @throws \RuntimeException */
+    #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
@@ -113,7 +136,10 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $outcome;
     }
 
-    /** @return array{string,string|null}|null */
+    /**
+     * @return array{0:string,1:?string}|null
+     * @throws \RuntimeException
+     */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
@@ -121,6 +147,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $index[$name] ?? null;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function removeTemporaryMatcherFile(string $file): void
     {
         if (is_file($file) && !unlink($file)) {
@@ -128,11 +157,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-    }
-
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function buildMatcherCode(): string
     {
         [$payloads, $hosts] = $this->generationData();
@@ -178,6 +205,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return hash('xxh128', serialize([$code, $middleware]));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function compileClosureFromCode(string $code): Closure
     {
         $file = tempnam(sys_get_temp_dir(), 'webrick-gen-');
@@ -191,6 +221,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         }
 
         try {
+            if (!is_file($file)) {
+                throw new \RuntimeException('Generated matcher source file is missing.');
+            }
             $fn = require $file;
         } finally {
             self::removeTemporaryMatcherFile($file);
@@ -202,6 +235,9 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
         return $fn;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function dumpCache(): void
     {
         $directory = dirname($this->cacheFile);
@@ -243,16 +279,23 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
 
     /**
      * @return array{0:array<int,mixed>,1:array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}>}
+     * @throws \UnexpectedValueException
      */
     private function generationData(): array
     {
         return new GeneratedMatcherIndexCompiler()->compile($this->index->hosts());
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function loadCacheBlob(): void
     {
         if ($this->cacheLoaded) {
             return;
+        }
+        if (!is_file($this->cacheFile)) {
+            throw new \RuntimeException('Generated route cache is missing. Rebuild the route cache.');
         }
 
         /** @var array<string,mixed> $blob */
@@ -326,25 +369,27 @@ final class GeneratedMatcher extends AbstractMatcher implements MatcherInterface
      */
     private function renderDynamicHosts(array $hosts): string
     {
+        if (!array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
+            return '';
+        }
+
         $dynamicSwitch = '';
-        if (array_any($hosts, static fn(array $index): bool => $index['dynamic'] !== [])) {
-            $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
-            $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
-            $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
-            $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
-            $dynamicSwitch .= "    switch (\$host) {\n";
-            foreach ($hosts as $host => $index) {
-                if ($host === '*' || $index['dynamic'] === []) {
-                    continue;
-                }
-                $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
-                $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
-                $dynamicSwitch .= "            break;\n";
+        $dynamicSwitch .= "    \$trimmed = \\trim(\$path, '/');\n";
+        $dynamicSwitch .= "    \$segments = \$trimmed === '' ? [] : \\explode('/', \$trimmed);\n";
+        $dynamicSwitch .= "    \$segCount = \\count(\$segments);\n";
+        $dynamicSwitch .= "    \$prefix = \$segments[0] ?? '';\n";
+        $dynamicSwitch .= "    switch (\$host) {\n";
+        foreach ($hosts as $host => $index) {
+            if ($host === '*' || $index['dynamic'] === []) {
+                continue;
             }
-            $dynamicSwitch .= "    }\n";
-            if (isset($hosts['*'])) {
-                $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
-            }
+            $dynamicSwitch .= '        case ' . var_export($host, true) . ":\n";
+            $dynamicSwitch .= $this->renderDynamicIndex($index['dynamic'], '            ');
+            $dynamicSwitch .= "            break;\n";
+        }
+        $dynamicSwitch .= "    }\n";
+        if (isset($hosts['*'])) {
+            $dynamicSwitch .= $this->renderDynamicIndex($hosts['*']['dynamic'], '    ');
         }
 
         return $dynamicSwitch;

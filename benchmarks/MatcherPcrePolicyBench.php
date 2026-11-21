@@ -21,14 +21,21 @@ final class MatcherPcrePolicyBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
+    /**
+     * @param array{matcher:string,path:non-empty-string} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideCases')]
     public function benchPcrePolicy(array $params): void
     {
-        self::matcher((string) $params['matcher'])
-            ->matchCompiled('GET', '*', (string) $params['path']);
+        self::matcher($params['matcher'])
+            ->matchCompiled('GET', '*', $params['path']);
     }
 
-    /** @return iterable<string,array{matcher:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {
@@ -47,6 +54,12 @@ final class MatcherPcrePolicyBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private static function matcher(string $mode): MatcherInterface
     {
         if (isset(self::$matchers[$mode])) {
@@ -59,20 +72,18 @@ final class MatcherPcrePolicyBench
             default => throw new \LogicException('Unsupported matcher mode.'),
         };
 
-        $index = 0;
-        for ($a = 0; $a < 3; ++$a) {
-            for ($b = 0; $b < 3; ++$b) {
-                for ($c = 0; $c < 3; ++$c) {
-                    for ($d = 0; $d < 3; ++$d) {
-                        for ($e = 0; $e < 3; ++$e) {
-                            $matcher->add(CompiledRoute::fromRoute(
-                                new Route('GET', "/pcre/a{$a}/b{$b}/c{$c}/d{$d}/e{$e}/{id:hex}", 'pcre-handler'),
-                                $index++,
-                            ));
-                        }
-                    }
-                }
-            }
+        // Equivalent lexicographic order to five base-3 nested loops (3^5 = 243 routes).
+        for ($index = 0; $index < 243; ++$index) {
+            $a = intdiv($index, 81);
+            $b = intdiv($index, 27) % 3;
+            $c = intdiv($index, 9) % 3;
+            $d = intdiv($index, 3) % 3;
+            $e = $index % 3;
+
+            $matcher->add(CompiledRoute::fromRoute(
+                new Route('GET', "/pcre/a{$a}/b{$b}/c{$c}/d{$d}/e{$e}/{id:hex}", 'pcre-handler'),
+                $index,
+            ));
         }
         $matcher->finalize();
 

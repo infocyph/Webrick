@@ -28,6 +28,9 @@ use Psr\Log\NullLogger;
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class PreRoutingGateIntegrationTest extends TestCase
 {
+    /**
+     * @throws \Throwable
+     */
     public function testInactiveGateKeepsCompiledRequestlessRouteRequestless(): void
     {
         $state = new MemoryMaintenanceState();
@@ -45,6 +48,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testActiveGateShortCircuitsBeforeRequestMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -64,6 +70,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testActiveGatePreservesHeadSemanticsWithoutRequestMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -83,6 +92,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function testExactBypassFallsThroughToCompiledRouteWithoutMaterialization(): void
     {
         $state = new MemoryMaintenanceState();
@@ -101,7 +113,85 @@ final class PreRoutingGateIntegrationTest extends TestCase
         }
     }
 
-    /** @param list<string> $bypassPaths @return array{0:CompiledRouterKernel,1:list<string>} */
+
+    /**
+     * @throws \Throwable
+     */
+    public function testPreRoutingRejectionShortCircuitsTheGateWithoutRequestMaterialization(): void
+    {
+        $state = new MemoryMaintenanceState();
+        $state->enable('Deploying');
+        [$kernel, $paths] = self::kernel($state);
+        $materializations = 0;
+        $written = null;
+
+        try {
+            $context = new RuntimeRequestContext(
+                new RoutingInput('POST', '/known'),
+                static function () use (&$materializations): Request {
+                    ++$materializations;
+
+                    return Request::fake(method: 'POST', uri: '/known');
+                },
+                new RuntimeCapabilities('test', persistent: true, concurrent: true),
+                preRoutingResponse: Response::json(['error' => 'payload_too_large'], 413),
+            );
+
+            $response = $kernel->handleRuntime(
+                $context,
+                static function (Response $current) use (&$written): void {
+                    $written = $current;
+                },
+            );
+
+            self::assertSame(413, $response->getStatusCode());
+            self::assertSame($response, $written);
+            self::assertSame(0, $materializations);
+        } finally {
+            self::cleanup($paths);
+        }
+    }
+
+    /**
+     * @throws \Throwable
+     */
+    public function testPreRoutingHeadRejectionOverridesGateWithoutRequestMaterialization(): void
+    {
+        $state = new MemoryMaintenanceState();
+        $state->enable('Deploying');
+        [$kernel, $paths] = self::kernel($state);
+        $materializations = 0;
+
+        try {
+            $context = new RuntimeRequestContext(
+                new RoutingInput('HEAD', '/known'),
+                static function () use (&$materializations): Request {
+                    ++$materializations;
+
+                    return Request::fake(method: 'HEAD', uri: '/known');
+                },
+                new RuntimeCapabilities('test', persistent: true, concurrent: true),
+                preRoutingResponse: Response::plaintext('too-large', 413),
+            );
+
+            $response = $kernel->handleRuntime($context);
+
+            self::assertSame(413, $response->getStatusCode());
+            self::assertSame('', (string) $response->getBody());
+            self::assertSame('9', $response->getHeaderLine('Content-Length'));
+            self::assertSame(0, $materializations);
+        } finally {
+            self::cleanup($paths);
+        }
+    }
+
+    /**
+     * @param list<string> $bypassPaths
+     * @return array{0:CompiledRouterKernel,1:list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
     private static function kernel(MemoryMaintenanceState $state, array $bypassPaths = []): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -133,6 +223,9 @@ final class PreRoutingGateIntegrationTest extends TestCase
         return [$kernel, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function context(string $method, string $path, int &$materializations): RuntimeRequestContext
     {
         return new RuntimeRequestContext(
@@ -154,7 +247,10 @@ final class PreRoutingGateIntegrationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

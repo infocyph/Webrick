@@ -36,7 +36,7 @@ interface RouteInterface
     /**
      * BC alias for getMiddlewares().
      *
-     * @return list<string|object>
+     * @return list<string|object|array{0:object|string,1:string}>
      */
     public function getMiddleware(): array;
 
@@ -46,7 +46,7 @@ interface RouteInterface
      * This can be an empty array if the route does not have any middlewares,
      * or an array containing the middlewares of the route.
      *
-     * @return list<string|object> The middlewares of this route.
+     * @return list<string|object|array{0:object|string,1:string}> The middlewares of this route.
      */
     public function getMiddlewares(): array;
 
@@ -81,10 +81,10 @@ interface RouteInterface
      *
      * The route will have the middlewares of the original route, plus the given middlewares.
      *
-     * @param list<string|object> $extra The middlewares to add to the route.
+     * @param list<string|object> $middleware The middlewares to add to the route.
      * @return self A new instance of the route with the given middlewares.
      */
-    public function withMiddleware(array $extra): self;
+    public function withMiddleware(array $middleware): self;
 
     /**
      * Returns a new instance of the route with the given name.

@@ -10,9 +10,18 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 
-/** For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT. */
+/**
+ * For unit tests or CLI scripts: dumps an HTTP-like envelope to STDOUT.
+ *
+ * @api
+ */
 final class CliEmitter implements EmitterInterface
 {
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {
         $status = $response->getStatusCode() . ' ' . $response->getReasonPhrase();
@@ -32,7 +41,7 @@ final class CliEmitter implements EmitterInterface
             }
         }
 
-        $written = file_put_contents('php://stdout', $output, FILE_APPEND);
+        $written = fwrite(\STDOUT, $output);
         if ($written === false || $written !== strlen($output)) {
             throw new \RuntimeException('Unable to write complete CLI response output.');
         }

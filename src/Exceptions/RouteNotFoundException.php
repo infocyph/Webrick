@@ -25,6 +25,7 @@ final class RouteNotFoundException extends HttpException
      * @param string $verb The HTTP verb associated with the request (e.g., "GET").
      * @param string $path The requested path (e.g., "/users/1").
      * @param \Throwable|null $previous Optional previous throwable for chaining.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public readonly string $verb,

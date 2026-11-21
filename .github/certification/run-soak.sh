@@ -6,6 +6,7 @@ RESULT_DIR="${2:?result directory required}"
 SOAK_MINUTES="${3:-30}"
 MEMORY_GROWTH_MB="${4:-32}"
 SOAK_SECONDS=$((SOAK_MINUTES * 60))
+export WEBRICK_CERT_ADMISSION=middleware
 RECYCLE_SECONDS=$((SOAK_SECONDS * 2 / 3))
 if (( RECYCLE_SECONDS < 30 )); then
     RECYCLE_SECONDS=30
@@ -29,30 +30,8 @@ head -c 32768 /dev/zero > "$PAYLOAD"
 SUPERVISOR_EVENTS_SOURCE="$ROOT/.runtime-certification/router.php.supervisor-events.jsonl"
 SUPERVISOR_EVENTS="$RESULT_DIR/supervisor-events.jsonl"
 
-descendants() {
-    local parent="$1"
-    local child
-    echo "$parent"
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        descendants "$child"
-    done < <(pgrep -P "$parent" 2>/dev/null || true)
-}
-
-rss_kb() {
-    local pid="$1"
-    local total=0
-    local child
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        local rss
-        rss="$(ps -o rss= -p "$child" 2>/dev/null | tr -d ' ' || true)"
-        if [[ "$rss" =~ ^[0-9]+$ ]]; then
-            total=$((total + rss))
-        fi
-    done < <(descendants "$pid" | sort -u)
-    echo "$total"
-}
+source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
+init_rss_sampling
 
 wait_ready() {
     for _ in $(seq 1 100); do
@@ -66,6 +45,7 @@ wait_ready() {
 }
 
 source "$(dirname "${BASH_SOURCE[0]}")/soak-http-batch.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/soak-metrics.sh"
 
 fetch_retry() {
     local url="$1"
@@ -100,6 +80,9 @@ SERVER_PID=$!
 cleanup() {
     kill -TERM "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+    if [[ -f "$SUPERVISOR_EVENTS_SOURCE" ]]; then
+        cp "$SUPERVISOR_EVENTS_SOURCE" "$SUPERVISOR_EVENTS"
+    fi
 }
 trap cleanup EXIT
 
@@ -117,6 +100,13 @@ while (( $(date +%s) < DEADLINE )); do
 
     run_http_batch 200 20 GET "http://127.0.0.1:18100/cert/static"
     run_http_batch 50 10 POST "http://127.0.0.1:18100/cert/upload"
+    run_http_batch 20 5 POST "http://127.0.0.1:18100/cert/risk_counter"
+    run_http_batch 20 5 POST "http://127.0.0.1:18100/cert/risk_clearance"
+    login="$(curl --fail --silent --show-error --max-time 5 \
+        --header 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"cert-password"}' \
+        "http://127.0.0.1:18100/cert/risk_login")"
+    [[ "$login" == '{"authenticated":true}' ]]
 
     if (( CYCLE % 10 == 0 )); then
         CANCELLATION_PROBES=$((CANCELLATION_PROBES + 1))
@@ -135,13 +125,14 @@ done
 
 sleep 1
 sample $((CYCLE + 1))
+DRAINED_WORKERS="$(fetch_drained_soak_workers 18100 "$SUPERVISOR_EVENTS_SOURCE" "$RESULT_DIR/soak-settling.jsonl")"
 
 FIRST_MEMORY="$(jq -s '.[0].runtime.memory_current_bytes // 0' "$METRICS")"
 LAST_MEMORY="$(jq -s '.[-1].runtime.memory_current_bytes // 0' "$METRICS")"
 FIRST_RSS="$(jq -s '.[0].rss_kb // 0' "$METRICS")"
 LAST_RSS="$(jq -s '.[-1].rss_kb // 0' "$METRICS")"
-FINAL_ACTIVE="$(jq -s '.[-1].runtime.requests_active // 0' "$METRICS")"
-FINAL_QUEUE="$(jq -s '.[-1].runtime.queued_bytes_current // 0' "$METRICS")"
+FINAL_ACTIVE="$(jq '[.[].requests_active] | max' <<<"$DRAINED_WORKERS")"
+FINAL_QUEUE="$(jq '[.[].queued_bytes_current] | max' <<<"$DRAINED_WORKERS")"
 REJECTED="$(jq -s '[.[].runtime.rejected_requests_total // 0] | max // 0' "$METRICS")"
 DISTINCT_PIDS="$(sort -u "$PIDS" | sed '/^$/d' | wc -l | tr -d ' ')"
 

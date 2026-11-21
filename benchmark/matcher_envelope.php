@@ -52,7 +52,9 @@ function envelopeRemoveTree(string $path): void
 function envelopeDirectorySize(string $path): int
 {
     if (is_file($path)) {
-        return filesize($path) ?: 0;
+        $size = filesize($path);
+
+        return $size === false ? 0 : $size;
     }
     if (!is_dir($path)) {
         return 0;

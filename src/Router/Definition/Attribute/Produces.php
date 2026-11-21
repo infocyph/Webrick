@@ -16,6 +16,7 @@ final readonly class Produces
     /**
      * @param list<string> $types
      * @param list<string>|null $charsets
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public array $types,

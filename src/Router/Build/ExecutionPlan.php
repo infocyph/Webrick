@@ -13,6 +13,7 @@ final readonly class ExecutionPlan
     /**
      * @param list<mixed> $middleware
      * @param list<string> $routeArguments
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public string $routeId,
@@ -37,6 +38,9 @@ final readonly class ExecutionPlan
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function fromPayload(mixed $payload): self
     {
         if (!is_array($payload)) {
@@ -101,6 +105,7 @@ final readonly class ExecutionPlan
 
     /**
      * @return array<mixed>|callable|string|null
+     * @throws \UnexpectedValueException
      */
     public function resolverSpec(): array|callable|string|null
     {
@@ -114,7 +119,11 @@ final readonly class ExecutionPlan
         throw new UnexpectedValueException('Execution-plan handler is not a resolver descriptor.');
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     public function toPayload(): array
     {
         return [

@@ -7,8 +7,6 @@ namespace Infocyph\Webrick\Router\Matching;
 use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Router\Route\CompiledRoute;
 
-require_once __DIR__ . '/matcher_functions.php';
-
 /** Shared build/cache utilities for the canonical matcher implementations. */
 abstract class AbstractMatcher
 {
@@ -29,7 +27,10 @@ abstract class AbstractMatcher
         return $this;
     }
 
-    /** Normalize a configured route host once at route-build time. */
+    /**
+     * Normalize a configured route host once at route-build time.
+     * @throws \InvalidArgumentException
+     */
     protected function canonicalRouteHost(?string $raw): string
     {
         if ($raw === null || $raw === '' || $raw === '*') {
@@ -64,6 +65,10 @@ abstract class AbstractMatcher
         return $indent . rtrim($out, ",\n") . "\n" . $indent . ']';
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     protected function exportValue(mixed $value, int $depth): string
     {
         if ($value instanceof CompiledRoute) {

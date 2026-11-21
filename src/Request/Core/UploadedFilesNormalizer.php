@@ -9,6 +9,7 @@ final class UploadedFilesNormalizer
     /**
      * @param array<string,mixed> $spec
      * @return array<string,UploadedFile|array<mixed>>
+     * @throws \InvalidArgumentException
      */
     public static function normalise(array $spec): array
     {
@@ -27,7 +28,10 @@ final class UploadedFilesNormalizer
         return $out;
     }
 
-    /** @param array<int|string,mixed> $part */
+    /**
+     * @param array<int|string,mixed> $part
+     * @throws \InvalidArgumentException
+     */
     private static function leafFile(array $part, mixed $tmpName): UploadedFile
     {
         return UploadedFile::fromSpec([
@@ -39,7 +43,10 @@ final class UploadedFilesNormalizer
         ]);
     }
 
-    /** @return UploadedFile|array<array-key,mixed>|null */
+    /**
+     * @return UploadedFile|array<array-key,mixed>|null
+     * @throws \InvalidArgumentException
+     */
     private static function normalisePart(mixed $part): UploadedFile|array|null
     {
         if ($part instanceof UploadedFile) {
@@ -74,6 +81,7 @@ final class UploadedFilesNormalizer
     /**
      * @param array{tmp_name:array<int|string,mixed>,size:array<int|string,mixed>,error:array<int|string,mixed>,name:array<int|string,mixed>,type:array<int|string,mixed>} $bag
      * @return array<array-key,UploadedFile|array<array-key,mixed>>
+     * @throws \InvalidArgumentException
      */
     private static function unwindNestedFiles(array $bag): array
     {

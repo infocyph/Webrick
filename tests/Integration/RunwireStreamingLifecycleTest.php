@@ -46,6 +46,20 @@ final class RunwireStreamingScopeProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function producerAdvanceCount(): int
+    {
+        return self::$producerAdvances;
+    }
+
+    /**
+     * @throws \RuntimeException
+     */
     public static function marker(): RunwireStreamingScopedMarker
     {
         $container = self::$container ?? throw new RuntimeException('Streaming scope probe container is unavailable.');
@@ -57,6 +71,9 @@ final class RunwireStreamingScopeProbe
         return $marker;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function requestPath(): string
     {
         $container = self::$container ?? throw new RuntimeException('Streaming scope probe container is unavailable.');
@@ -100,16 +117,19 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
 
     public function __construct(private readonly string $body) {}
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->body) - $this->offset;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->offset >= strlen($this->body);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         if (!$this->eof()) {
@@ -119,6 +139,7 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         if ($this->eof()) {
@@ -128,6 +149,10 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         ++$this->readCalls;
@@ -145,11 +170,13 @@ final class RunwireStreamingBodyFixture implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return strlen($this->body);
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return $this->eof() ? new Headers() : null;
@@ -169,6 +196,17 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 
     public int $writeCalls = 0;
 
+
+    public function writeCount(): int
+    {
+        return $this->writeCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
     private ?Closure $drainCallback = null;
 
     private bool $ended = false;
@@ -187,6 +225,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         $callback($this);
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -211,16 +250,19 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return $this->drainCallback instanceof Closure;
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         $this->drainCallback = Closure::fromCallable($callback);
@@ -228,6 +270,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -241,6 +284,7 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         if ($this->ended) {
@@ -262,11 +306,18 @@ final class RunwirePressureWriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireStreamingLifecycleTest extends TestCase
 {
+    #[\Override]
     protected function tearDown(): void
     {
         RunwireStreamingScopeProbe::reset();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testPressureStopsProducerUntilDrainWhileRequestScopeAndLifecycleRemainActive(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -276,24 +327,24 @@ final class RunwireStreamingLifecycleTest extends TestCase
         try {
             $application->handle($request, $writer, completeResponse: true);
 
-            self::assertSame(1, $writer->writeCalls);
+            self::assertSame(1, $writer->writeCount());
             self::assertCount(1, $writer->chunks);
-            self::assertSame(1, RunwireStreamingScopeProbe::$producerAdvances);
-            self::assertSame(0, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(1, RunwireStreamingScopeProbe::producerAdvanceCount());
+            self::assertSame(0, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(0, $writer->endCount());
             self::assertTrue($writer->hasPendingDrain());
             self::assertSame(1, $application->snapshot()->requestsActive);
             self::assertFalse($request->context->completed());
 
             $writer->drain();
 
-            self::assertSame(2, $writer->writeCalls);
+            self::assertSame(2, $writer->writeCount());
             self::assertCount(2, $writer->chunks);
             self::assertStringContainsString('/runtime/scoped-stream', $writer->chunks[0]);
             self::assertSame('second:same', $writer->chunks[1]);
-            self::assertSame(2, RunwireStreamingScopeProbe::$producerAdvances);
-            self::assertSame(1, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(2, RunwireStreamingScopeProbe::producerAdvanceCount());
+            self::assertSame(1, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(1, $writer->endCount());
             self::assertTrue($writer->isEnded());
             self::assertFalse($writer->hasPendingDrain());
             self::assertSame(0, $application->snapshot()->requestsActive);
@@ -304,6 +355,12 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testZeroScopeStreamingRouteDoesNotOpenOrCaptureIntermixScope(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -313,8 +370,8 @@ final class RunwireStreamingLifecycleTest extends TestCase
             $application->handle(self::request('/runtime/zero-stream'), $writer, completeResponse: true);
 
             self::assertSame(['no-scope'], $writer->chunks);
-            self::assertSame(0, RunwireStreamingScopeProbe::$scopeLeaves);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(0, RunwireStreamingScopeProbe::scopeLeaveCount());
+            self::assertSame(1, $writer->endCount());
             self::assertTrue($writer->isEnded());
             self::assertFalse($writer->hasPendingDrain());
         } finally {
@@ -323,6 +380,11 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testPressureContinuationDoesNotAdoptAmbientFiberOwnership(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -346,13 +408,19 @@ final class RunwireStreamingLifecycleTest extends TestCase
 
             self::assertSame(0, $application->snapshot()->requestsActive);
             self::assertTrue($request->context->completed());
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testRequestBodyRemainsIncrementalThroughTheRunwireRuntimeBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -366,14 +434,18 @@ final class RunwireStreamingLifecycleTest extends TestCase
             self::assertSame(1, $body->readCalls);
             self::assertSame([3], $body->requestedBytes);
             self::assertSame(131_069, $body->bufferedBytes());
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -395,7 +467,43 @@ final class RunwireStreamingLifecycleTest extends TestCase
             },
         );
 
-        $build = new RouteCompiler()->compile(
+        $build = self::compileFixtureRoutes($fingerprint);
+
+        try {
+            $builder->compile($intermixPath);
+            $container = $builder->production($intermixPath);
+            RunwireStreamingScopeProbe::$container = $container;
+            new RouterArtifactCompiler()->compile($build, $routerPath);
+            $kernel = CompiledRouterKernel::fromCompiledArtifact(
+                log: new NullLogger(),
+                matcher: FusedMatcher::make(),
+                container: $container,
+                artifactPath: $routerPath,
+                environment: 'production',
+                configFingerprint: $fingerprint,
+            );
+            $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
+            $application = new RunwireRuntimeApplication(
+                static function (HttpRequest $request, ResponseWriterInterface $writer) use ($server): void {
+                    $server->handle($request, $writer);
+                },
+                RuntimeContext::standalone(),
+            );
+        } catch (Throwable $error) {
+            self::cleanup([$intermixPath, $routerPath]);
+            throw $error;
+        }
+
+        return [$application, [$intermixPath, $routerPath]];
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    private static function compileFixtureRoutes(string $fingerprint): \Infocyph\Webrick\Router\Build\RouterBuildResult
+    {
+        return new RouteCompiler()->compile(
             register: static function (Registrar $registrar): void {
                 $registrar->get(
                     '/runtime/scoped-stream',
@@ -436,33 +544,6 @@ final class RunwireStreamingLifecycleTest extends TestCase
             preGlobalTags: [],
             postGlobalTags: [],
         );
-
-        try {
-            $builder->compile($intermixPath);
-            $container = $builder->production($intermixPath);
-            RunwireStreamingScopeProbe::$container = $container;
-            new RouterArtifactCompiler()->compile($build, $routerPath);
-            $kernel = CompiledRouterKernel::fromCompiledArtifact(
-                log: new NullLogger(),
-                matcher: FusedMatcher::make(),
-                container: $container,
-                artifactPath: $routerPath,
-                environment: 'production',
-                configFingerprint: $fingerprint,
-            );
-            $server = new RuntimeServer($kernel, new RunwireRuntimeAdapter());
-            $application = new RunwireRuntimeApplication(
-                static function (HttpRequest $request, ResponseWriterInterface $writer) use ($server): void {
-                    $server->handle($request, $writer);
-                },
-                RuntimeContext::standalone(),
-            );
-        } catch (Throwable $error) {
-            self::cleanup([$intermixPath, $routerPath]);
-            throw $error;
-        }
-
-        return [$application, [$intermixPath, $routerPath]];
     }
 
     /** @return array{0:string,1:string} */
@@ -473,7 +554,10 @@ final class RunwireStreamingLifecycleTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         RunwireStreamingScopeProbe::$container = null;
@@ -486,6 +570,10 @@ final class RunwireStreamingLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target, ?RunwireStreamingBodyFixture $body = null): HttpRequest
     {
         return new HttpRequest(

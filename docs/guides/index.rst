@@ -64,4 +64,5 @@ Common pitfalls
    throttling
    error-rendering
    upgrading-5.4-to-6.0
+   upgrading-6.0-to-6.1
    urls

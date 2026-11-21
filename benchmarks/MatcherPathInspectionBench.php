@@ -16,10 +16,14 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherPathInspectionBench
 {
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentPathShape(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         $trimmed = trim($path, '/');
         if ($trimmed === '') {
             $count = 0;
@@ -30,11 +34,14 @@ final class MatcherPathInspectionBench
             $count = substr_count($trimmed, '/') + 1;
         }
 
-        if ($count < 0 || $prefix === "\0") {
+        if ($prefix === "\0" || $count > strlen($trimmed) + 1) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function benchCurrentPositionalParameterCapture(): void
     {
         $entry = ['id' => 42, 'params' => ['group', 'id', 'slug']];
@@ -48,23 +55,23 @@ final class MatcherPathInspectionBench
 
         $captured = [];
         foreach ($entry['params'] as $offset => $name) {
-            $piece = $matches[$offset + 1] ?? null;
-            if (!is_string($piece)) {
-                throw new \UnexpectedValueException('Benchmark capture is unavailable.');
-            }
-            $captured[$name] = $piece;
+            $captured[$name] = $matches[$offset + 1];
         }
 
         $result = [$entry['id'], $captured];
-        if ($result[0] !== 42) {
+        if (array_diff_assoc($result[1], ['group' => 'main', 'id' => '42', 'slug' => 'benchmark']) !== []) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
 
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentSegmentMaterialization(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         if ($path === '/' || $path === '') {
             $segments = [];
         } else {
@@ -72,15 +79,19 @@ final class MatcherPathInspectionBench
             $segments = $trimmed === '' ? [] : explode('/', $trimmed);
         }
 
-        if (count($segments) < 0) {
-            throw new \LogicException('Unreachable benchmark guard.');
+        if (isset($segments[0]) && $segments[0] === "\0") {
+            throw new \LogicException('Invalid benchmark segment.');
         }
     }
 
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchCurrentShapeAndSegments(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         $trimmed = trim($path, '/');
         if ($trimmed === '') {
             $count = 0;
@@ -96,10 +107,14 @@ final class MatcherPathInspectionBench
         self::guardCombined($count, $prefix, $segments);
     }
 
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassPathShape(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         [$start, $end] = self::trimBounds($path);
         if ($start === $end) {
             $count = 0;
@@ -119,15 +134,19 @@ final class MatcherPathInspectionBench
             $prefix = substr($path, $start, $prefixEnd - $start);
         }
 
-        if ($count < 0 || $prefix === "\0") {
+        if ($prefix === "\0" || $count > ($end - $start) + 1) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }
 
+    /**
+     * @param array{path:string} $params
+     * @throws \LogicException
+     */
     #[Bench\ParamProviders('providePaths')]
     public function benchOnePassViewAndMaterialize(array $params): void
     {
-        $path = (string) $params['path'];
+        $path = $params['path'];
         [$start, $end] = self::trimBounds($path);
         if ($start === $end) {
             $count = 0;
@@ -162,10 +181,13 @@ final class MatcherPathInspectionBench
         yield 'normalized-extra-slashes' => ['path' => '//api/v1/users/42//'];
     }
 
-    /** @param list<string> $segments */
+    /**
+     * @param list<string> $segments
+     * @throws \LogicException
+     */
     private static function guardCombined(int $count, string $prefix, array $segments): void
     {
-        if ($count < 0 || $prefix === "\0" || count($segments) < 0) {
+        if ($count < 0 || $prefix === "\0" || ($segments !== [] && $segments[0] !== $prefix)) {
             throw new \LogicException('Unreachable benchmark guard.');
         }
     }

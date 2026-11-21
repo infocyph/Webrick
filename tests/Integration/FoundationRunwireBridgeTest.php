@@ -60,6 +60,20 @@ final class FoundationRunwireProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function cleanupCallCount(): int
+    {
+        return self::$cleanupCalls;
+    }
+
+    /**
+     * @throws \RuntimeException
+     */
     public static function currentMarker(): FoundationRunwireScopedMarker
     {
         $container = self::$container ?? throw new RuntimeException('Foundation bridge container is unavailable.');
@@ -79,6 +93,13 @@ final class FoundationRunwireProbe
         self::$scopeLeaves = 0;
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Coroutine\Exception\CoroutineDeadlockException
+     * @throws \Infocyph\Runwire\Coroutine\Exception\CoroutineOverflowException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public static function structuredChildShares(FoundationRunwireScopedMarker $parent): bool
     {
         $runtime = self::$runtime ?? throw new RuntimeException('Foundation bridge InterMix runtime is unavailable.');
@@ -95,12 +116,22 @@ final class FoundationRunwireProbe
                             throw new RuntimeException('Foundation structured child did not inherit ScopeContext.');
                         }
 
-                        return $runtime->withinScopeContext(
+                        $resolved = $runtime->withinScopeContext(
                             $captured,
-                            static fn(ProductionContainer $container): FoundationRunwireScopedMarker => $container->get(
-                                FoundationRunwireScopedMarker::class,
-                            ),
+                            static function (ProductionContainer $container): FoundationRunwireScopedMarker {
+                                $marker = $container->get(FoundationRunwireScopedMarker::class);
+                                if (!$marker instanceof FoundationRunwireScopedMarker) {
+                                    throw new RuntimeException('Structured child resolved a non-marker dependency.');
+                                }
+
+                                return $marker;
+                            },
                         );
+                        if (!$resolved instanceof FoundationRunwireScopedMarker) {
+                            throw new RuntimeException('Structured child returned an invalid scoped marker.');
+                        }
+
+                        return $resolved;
                     },
                 );
 
@@ -114,16 +145,19 @@ final class FoundationRunwireProbe
 
 final class FoundationRunwireBody implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -131,6 +165,7 @@ final class FoundationRunwireBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -138,6 +173,7 @@ final class FoundationRunwireBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -145,12 +181,14 @@ final class FoundationRunwireBody implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -169,6 +207,7 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
 
     private bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -181,16 +220,19 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -198,6 +240,7 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -206,6 +249,7 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->chunks[] = $chunk;
@@ -219,11 +263,17 @@ final class FoundationRunwireWriter implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class FoundationRunwireBridgeTest extends TestCase
 {
+    #[\Override]
     protected function tearDown(): void
     {
         FoundationRunwireProbe::reset();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testFoundationPolicyComposesConcurrentRequestsStructuredChildrenAndCleanup(): void
     {
         [$factory, $context, $paths] = self::fixture();
@@ -259,16 +309,16 @@ final class FoundationRunwireBridgeTest extends TestCase
             self::assertSame([$markerB . ':same:/foundation/fiber/b'], $writerB->chunks);
             self::assertSame(1, $writerA->endCalls);
             self::assertSame(1, $writerB->endCalls);
-            self::assertSame(2, FoundationRunwireProbe::$scopeLeaves);
-            self::assertSame(2, FoundationRunwireProbe::$cleanupCalls);
+            self::assertSame(2, FoundationRunwireProbe::scopeLeaveCount());
+            self::assertSame(2, FoundationRunwireProbe::cleanupCallCount());
             self::assertSame(0, $application->snapshot()->requestsActive);
 
             $structuredWriter = new FoundationRunwireWriter();
             $application->handle(self::request('/foundation/structured'), $structuredWriter, completeResponse: true);
 
             self::assertSame(['same'], $structuredWriter->chunks);
-            self::assertSame(3, FoundationRunwireProbe::$scopeLeaves);
-            self::assertSame(3, FoundationRunwireProbe::$cleanupCalls);
+            self::assertSame(3, FoundationRunwireProbe::scopeLeaveCount());
+            self::assertSame(3, FoundationRunwireProbe::cleanupCallCount());
             self::assertSame(3, $application->snapshot()->requestsTotal);
         } finally {
             $application->shutdown();
@@ -276,7 +326,11 @@ final class FoundationRunwireBridgeTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplicationFactory,RuntimeContext,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplicationFactory,RuntimeContext,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function fixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -303,7 +357,7 @@ final class FoundationRunwireBridgeTest extends TestCase
                     '/foundation/fiber/{id}',
                     static function (Request $request, FoundationRunwireScopedMarker $marker): Response {
                         $first = $marker->id;
-                        Fiber::suspend($first);
+                        expect(Fiber::suspend($first))->toBeNull();
                         $same = FoundationRunwireProbe::currentMarker() === $marker ? 'same' : 'different';
 
                         return Response::plaintext($first . ':' . $same . ':' . $request->getUri()->getPath());
@@ -358,6 +412,10 @@ final class FoundationRunwireBridgeTest extends TestCase
         return [$factory, $context, [$intermixPath, $routerPath]];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target): HttpRequest
     {
         return new HttpRequest(
@@ -377,7 +435,10 @@ final class FoundationRunwireBridgeTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {

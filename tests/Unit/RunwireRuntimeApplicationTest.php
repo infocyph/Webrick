@@ -2,6 +2,15 @@
 
 declare(strict_types=1);
 
+namespace Infocyph\Webrick\Tests\Unit;
+
+use Closure;
+use Fiber;
+use InvalidArgumentException;
+use RuntimeException;
+use UnexpectedValueException;
+use WeakReference;
+
 use Infocyph\Runwire\Coroutine\CoroutineRuntime;
 use Infocyph\Runwire\Coroutine\CoroutineScope;
 use Infocyph\Runwire\Exception\CancelledException;
@@ -16,7 +25,6 @@ use Infocyph\Runwire\Network\WriteResult;
 use Infocyph\Runwire\RequestContext as RunwireRequestContext;
 use Infocyph\Runwire\Runtime\ApplicationLifecycleHooks;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
-use Infocyph\Runwire\Runtime\RuntimeApplicationInterface;
 use Infocyph\Runwire\RuntimeContext;
 use Infocyph\Runwire\Supervisor\Enum\ShutdownReason;
 use Infocyph\Webrick\Response\Response;
@@ -28,21 +36,25 @@ use Infocyph\Webrick\Runtime\Http\RunwireRuntimeApplicationFactory;
 
 final class RunwireApplicationBodyFixture implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -50,17 +62,20 @@ final class RunwireApplicationBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -82,6 +97,8 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
 
     public bool $pressureWrites = false;
 
+    public bool $closeOnEnd = false;
+
     public string $body = '';
 
     private ?Closure $drainCallback = null;
@@ -91,6 +108,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -101,19 +119,25 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $this->ended = true;
         $this->notifyTerminal();
 
-        return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
+        return new WriteResult(
+            $this->closeOnEnd ? WriteState::CLOSED : WriteState::ACCEPTED,
+            $this->closeOnEnd ? 0 : strlen($finalChunk),
+        );
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         $this->drainCallback = Closure::fromCallable($callback);
@@ -127,6 +151,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         $callback($this);
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         $this->headers = $headers ?? new Headers();
@@ -136,6 +161,7 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->body .= $chunk;
@@ -144,6 +170,10 @@ final class RunwireApplicationWriterFixture implements ResponseWriterInterface
     }
 }
 
+/**
+ * @throws \OverflowException
+ * @throws \InvalidArgumentException
+ */
 function runwire_application_request(): HttpRequest
 {
     return new HttpRequest(
@@ -173,6 +203,49 @@ test('runwire application bridge delegates requested lifecycle completion exactl
         ->and($application->snapshot()->requestsTotal)->toBe(1)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
+
+test('transport closure after asynchronous request body completion keeps the worker usable', function (bool $cancel): void {
+    $runtime = RuntimeContext::standalone();
+    $adapter = new RunwireRuntimeAdapter(runtimeContext: $runtime);
+    $body = new StreamingRequestBody(0, 64, 128, static function (): void {});
+    $cleanup = 0;
+    $application = new RunwireRuntimeApplication(
+        static function (HttpRequest $request, ResponseWriterInterface $writer) use ($adapter, $cancel): void {
+            $stream = new RunwireRequestBodyStream($request->body, $request->context->cancellation);
+            $payload = $stream->getContents();
+            if ($cancel && $request->method === 'POST') {
+                throw new CancelledException(CancellationReason::TRANSPORT_CANCELLED);
+            }
+            $adapter->write(Response::plaintext($payload, 200), $adapter->context($request, $writer));
+        },
+        $runtime,
+        requestCleanup: static function () use (&$cleanup): void {
+            ++$cleanup;
+        },
+    );
+    $request = new HttpRequest(
+        method: 'POST', target: '/host/login', version: ProtocolVersion::HTTP_1_1,
+        headers: Headers::fromArray(['Host' => 'example.test']), body: $body,
+    );
+    $writer = new RunwireApplicationWriterFixture();
+    $writer->closeOnEnd = true;
+    $application->handle($request, $writer);
+    expect($application->snapshot()->requestsActive)->toBe(1);
+
+    $body->push('login');
+    expect($cleanup)->toBe(0);
+    $body->finish();
+    expect($cleanup)->toBe(1)
+        ->and($application->snapshot()->requestsActive)->toBe(0)
+        ->and($application->healthy())->toBeTrue();
+
+    $nextWriter = new RunwireApplicationWriterFixture();
+    $application->handle(runwire_application_request(), $nextWriter);
+    expect($nextWriter->ended)->toBeTrue()
+        ->and($cleanup)->toBe(2)
+        ->and($application->snapshot()->requestsTotal)->toBe(2)
+        ->and($application->snapshot()->requestsActive)->toBe(0);
+})->with(['writer closed' => false, 'transport cancelled' => true]);
 
 test('runwire application bridge leaves exactly once completion with the Webrick handler', function (): void {
     $application = new RunwireRuntimeApplication(
@@ -216,17 +289,19 @@ test('runwire terminal observers fire exactly once and late observers fire immed
 test('runwire continuation preserves caller ownership through yielding exception cleanup', function (): void {
     $caught = null;
     $finalized = 0;
-    $cleanupResumed = false;
+    $cleanup = new class {
+        public bool $resumed = false;
+    };
     $failure = new RuntimeException('caller Fiber cancelled');
 
-    $owner = new Fiber(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
-        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, &$cleanupResumed): void {
+    $owner = new Fiber(static function () use (&$caught, &$finalized, $cleanup): void {
+        RunwireResponseContinuation::run(static function () use (&$caught, &$finalized, $cleanup): void {
             try {
-                Fiber::suspend('handler-suspended');
+                expect(Fiber::suspend('handler-suspended'))->toBeNull();
             } catch (RuntimeException $error) {
                 $caught = $error;
-                Fiber::suspend('cleanup-suspended');
-                $cleanupResumed = true;
+                expect(Fiber::suspend('cleanup-suspended'))->toBeNull();
+                $cleanup->resumed = true;
 
                 throw $error;
             } finally {
@@ -241,9 +316,9 @@ test('runwire continuation preserves caller ownership through yielding exception
         ->and($owner->isSuspended())->toBeTrue()
         ->and($caught)->toBe($failure)
         ->and($finalized)->toBe(0)
-        ->and(fn() => $owner->resume())
+        ->and(fn(): mixed => $owner->resume())
         ->toThrow(RuntimeException::class, 'caller Fiber cancelled')
-        ->and($cleanupResumed)->toBeTrue()
+        ->and($cleanup->resumed)->toBeTrue()
         ->and($finalized)->toBe(1)
         ->and($owner->isTerminated())->toBeTrue();
 });
@@ -261,7 +336,9 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         context: $requestContext,
     );
     $writer = new RunwireApplicationWriterFixture();
-    $caught = false;
+    $caught = new class {
+        public bool $value = false;
+    };
     $handlerFinally = 0;
     $cleanupCalls = 0;
     $application = null;
@@ -287,7 +364,7 @@ test('runwire host task cancellation reaches handler and finalizes request exact
                     try {
                         $scope->sleep(60.0);
                     } catch (CancelledException $error) {
-                        $caught = true;
+                        $caught->value = true;
 
                         throw $error;
                     } finally {
@@ -316,11 +393,14 @@ test('runwire host task cancellation reaches handler and finalizes request exact
         },
     );
 
-    expect($caught)->toBeTrue()
+    if (!$application instanceof RunwireRuntimeApplication) {
+        throw new UnexpectedValueException('Expected a Runwire runtime application after cancellation.');
+    }
+
+    expect($caught->value)->toBeTrue()
         ->and($handlerFinally)->toBe(1)
         ->and($cleanupCalls)->toBe(1)
         ->and($requestContext->completed())->toBeTrue()
-        ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class)
         ->and($application->snapshot()->requestsActive)->toBe(0);
 });
 
@@ -330,11 +410,16 @@ test('runwire drain callback releases the completed continuation while writer re
     $continuation = null;
     RunwireResponseContinuation::run(static function () use ($writer, $request, &$continuation): void {
         $fiber = Fiber::getCurrent();
-        expect($fiber)->toBeInstanceOf(Fiber::class);
+        if (!$fiber instanceof Fiber) {
+            throw new UnexpectedValueException('Drain continuation requires an active fiber.');
+        }
         $continuation = WeakReference::create($fiber);
         RunwireResponseContinuation::awaitDrain($writer, $request->context->cancellation);
     });
 
+    if (!$continuation instanceof WeakReference) {
+        throw new UnexpectedValueException('Drain continuation did not capture its fiber.');
+    }
     expect($continuation->get())->toBeInstanceOf(Fiber::class);
     $writer->drain();
     expect($continuation->get())->toBeNull();
@@ -351,7 +436,7 @@ test('runwire continuation preserves exception cleanup across repeated body read
     $owner = new Fiber(static function () use ($stream, &$received, &$finalized): void {
         RunwireResponseContinuation::run(static function () use ($stream, &$received, &$finalized): void {
             try {
-                Fiber::suspend('handler-suspended');
+                expect(Fiber::suspend('handler-suspended'))->toBeNull();
             } finally {
                 $received .= $stream->read(1);
                 $received .= $stream->read(1);
@@ -361,7 +446,7 @@ test('runwire continuation preserves exception cleanup across repeated body read
     });
 
     expect($owner->start())->toBe('handler-suspended');
-    expect(fn() => $owner->throw($failure))
+    expect(fn(): mixed => $owner->throw($failure))
         ->toThrow(fn(RuntimeException $error) => expect($error)->toBe($failure));
     expect($owner->isTerminated())->toBeTrue()
         ->and($finalized)->toBe(0);
@@ -515,8 +600,7 @@ test('runwire application factory delegates lifecycle hooks cleanup and shutdown
     );
 
     $application = $factory->create($context);
-    expect($application)->toBeInstanceOf(RuntimeApplicationInterface::class)
-        ->and($application)->toBeInstanceOf(RunwireRuntimeApplication::class);
+    expect($application)->toBeInstanceOf(RunwireRuntimeApplication::class);
 
     $application->start();
     $application->handle(runwire_application_request(), new RunwireApplicationWriterFixture(), completeResponse: true);

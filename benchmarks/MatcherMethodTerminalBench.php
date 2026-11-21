@@ -21,17 +21,24 @@ final class MatcherMethodTerminalBench
     /** @var array<string,MatcherInterface> */
     private static array $matchers = [];
 
+    /**
+     * @param array{matcher:string,method:non-empty-string,path:non-empty-string} $params
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     #[Bench\ParamProviders('provideCases')]
     public function benchMethodTerminal(array $params): void
     {
-        self::matcher((string) $params['matcher'])->matchCompiled(
-            (string) $params['method'],
+        self::matcher($params['matcher'])->matchCompiled(
+            $params['method'],
             '*',
-            (string) $params['path'],
+            $params['path'],
         );
     }
 
-    /** @return iterable<string,array{matcher:string,method:string,path:string}> */
+    /** @return iterable<string,array{matcher:string,method:non-empty-string,path:non-empty-string}> */
     public function provideCases(): iterable
     {
         foreach ([MatcherModeEnum::FUSED->value, MatcherModeEnum::SHARDED->value] as $matcher) {
@@ -58,6 +65,12 @@ final class MatcherMethodTerminalBench
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private static function matcher(string $mode): MatcherInterface
     {
         if (isset(self::$matchers[$mode])) {

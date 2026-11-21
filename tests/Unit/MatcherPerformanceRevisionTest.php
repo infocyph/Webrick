@@ -19,6 +19,20 @@ function matcherRevisionRoute(string $method, string $path, string $handler = 'm
     return CompiledRoute::fromRoute(new Route($method, $path, $handler));
 }
 
+/**
+ * @param array<string,mixed> $source
+ * @throws UnexpectedValueException
+ */
+function matcherRevisionRequiredMember(array $source, string $key): mixed
+{
+    if (!array_key_exists($key, $source)) {
+        throw new UnexpectedValueException("Matcher IR is missing required {$key} metadata.");
+    }
+
+    return $source[$key];
+}
+
+/** @throws UnexpectedValueException For malformed iterator entries. */
 function matcherRevisionRemoveTree(string $path): void
 {
     if (is_link($path) || is_file($path)) {
@@ -31,6 +45,9 @@ function matcherRevisionRemoveTree(string $path): void
     }
 
     foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $entry) {
+        if (!$entry instanceof SplFileInfo) {
+            throw new UnexpectedValueException('Matcher fixture must enumerate filesystem objects.');
+        }
         $entryPath = $entry->getPathname();
         if ($entry->isLink() || $entry->isFile()) {
             unlink($entryPath);
@@ -54,13 +71,20 @@ it('compiles safe regex routes and specializes built-in callable fallback segmen
     $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
     $userSteps = $compiled['*']['dynamic']['GET'][2]['users']['steps'];
     $orderSteps = $compiled['*']['dynamic']['GET'][2]['orders']['steps'];
+    if (($orderSteps[0]['type'] ?? null) !== 'fallback') {
+        throw new UnexpectedValueException('Built-in callable constraint must compile to fallback.');
+    }
+    $fallbackSegments = matcherRevisionRequiredMember($orderSteps[0], 'segments');
+    $secondSegment = is_array($fallbackSegments) ? ($fallbackSegments[1] ?? null) : null;
+    if (!is_array($secondSegment)) {
+        throw new UnexpectedValueException('Fallback IR must contain a typed second segment.');
+    }
 
     expect($userSteps)->toHaveCount(1)
         ->and($userSteps[0]['type'])->toBe('pcre')
         ->and($orderSteps)->toHaveCount(1)
-        ->and($orderSteps[0]['type'])->toBe('fallback')
-        ->and($orderSteps[0]['segments'][1]['type'])->toBe('op')
-        ->and($orderSteps[0]['segments'][1]['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
+        ->and($secondSegment['type'])->toBe('op')
+        ->and($secondSegment['code'])->toBe(CompiledMatcherConstraintOpcode::DIGIT);
 });
 
 it('keeps slash-consuming built-in regex constraints out of whole-path pcre', function (): void {
@@ -87,15 +111,13 @@ it('keeps arbitrary registered regexes segment-local', function (): void {
         $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
 
         expect($compiled['*']['dynamic']['GET'][2]['custom']['steps'][0]['type'])->toBe('fallback');
-    } else {
-        expect(true)->toBeTrue();
     }
 });
 
 it('preserves registration precedence across pcre and fallback barriers', function (Closure $factory): void {
     $first = matcherRevisionRoute('GET', '/pick/{value:int}', 'first-handler');
     $second = matcherRevisionRoute('GET', '/pick/{value}', 'second-handler');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($first);
     $matcher->add($second);
     $matcher->finalize();
@@ -106,7 +128,7 @@ it('preserves registration precedence across pcre and fallback barriers', functi
 
 it('dispatches regex dynamic routes through the shared compiled matcher engine', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -116,7 +138,7 @@ it('dispatches regex dynamic routes through the shared compiled matcher engine',
 
 it('dispatches built-in callable constraints through the specialized fallback lane', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/orders/{id:int}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -124,12 +146,14 @@ it('dispatches built-in callable constraints through the specialized fallback la
         ->toBe([$route->getIndex(), ['id' => '42']]);
 
     $miss = $matcher->matchCompiled('GET', '*', '/orders/not-an-int');
-    expect($miss)->toBeInstanceOf(MatchOutcome::class)
-        ->and($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
+    if (!$miss instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Constraint miss must produce a matcher control outcome.');
+    }
+    expect($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
 })->with('compiled pcre ir matchers');
 
 it('accepts numeric literal discriminator keys in compact matcher metadata', function (Closure $factory): void {
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     for ($index = 0; $index < 80; ++$index) {
         $matcher->add(matcherRevisionRoute('GET', "/numeric-key/{$index}/{id:hex}"));
     }
@@ -154,7 +178,7 @@ it('preserves every built-in callable constraint semantic through matcher opcode
 
     foreach ($cases as [$constraint, $hitValue, $missValue]) {
         $route = matcherRevisionRoute('GET', "/typed/{$constraint}/{value:{$constraint}}");
-        $matcher = $factory();
+        $matcher = makeTestMatcher($factory);
         $matcher->add($route);
         $matcher->finalize();
 
@@ -162,8 +186,10 @@ it('preserves every built-in callable constraint semantic through matcher opcode
             ->toBe([$route->getIndex(), ['value' => $hitValue]]);
 
         $miss = $matcher->matchCompiled('GET', '*', "/typed/{$constraint}/{$missValue}");
-        expect($miss)->toBeInstanceOf(MatchOutcome::class)
-            ->and($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
+        if (!$miss instanceof MatchOutcome) {
+            throw new UnexpectedValueException('Typed constraint miss must produce a matcher control outcome.');
+        }
+        expect($miss->type)->toBe(MatchOutcomeType::NOT_FOUND);
     }
 })->with('compiled pcre ir matchers');
 
@@ -176,6 +202,9 @@ it('keeps unrecognized callable segments on the generic callable fallback repres
         ['type' => 'var', 'name' => 'value', 'call' => 'strrev'],
     ]);
 
+    if (!is_array($segments) || !is_array($segments[1] ?? null)) {
+        throw new UnexpectedValueException('Compiler fallback segments must contain a second segment object.');
+    }
     expect($segments[1]['type'])->toBe('var')
         ->and($segments[1]['call'])->toBe('strrev')
         ->and($segments[1])->not->toHaveKey('code');
@@ -184,7 +213,7 @@ it('keeps unrecognized callable segments on the generic callable fallback repres
 it('uses method-first dynamic pcre buckets for overlapping route patterns', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/lookup/{value:uuid}');
     $post = matcherRevisionRoute('POST', '/lookup/{value:slug}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();
@@ -199,7 +228,7 @@ it('uses method-first dynamic pcre buckets for overlapping route patterns', func
 
 it('maps parameters correctly when a constraint contains nested capture groups', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/packages/{version:semver}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -209,7 +238,7 @@ it('maps parameters correctly when a constraint contains nested capture groups',
 
 it('preserves dynamic leading and trailing slash matching behavior', function (Closure $factory): void {
     $route = matcherRevisionRoute('GET', '/users/{name}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -220,37 +249,37 @@ it('preserves dynamic leading and trailing slash matching behavior', function (C
 })->with('compiled pcre ir matchers');
 
 it('dispatches across multiple combined pcre chunks', function (Closure $factory): void {
-    $matcher = $factory();
-    $last = null;
-
+    $matcher = makeTestMatcher($factory);
     for ($i = 0; $i < 40; $i++) {
         $route = matcherRevisionRoute('GET', '/bulk/{group}/item-' . $i . '/{id}');
         $matcher->add($route);
-        $last = $route;
     }
     $matcher->finalize();
 
-    expect($last)->toBeInstanceOf(CompiledRoute::class)
-        ->and($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
-        ->toBe([$last->getIndex(), ['group' => 'main', 'id' => '99']]);
+    expect($matcher->matchCompiled('GET', '*', '/bulk/main/item-39/99'))
+        ->toBe([$route->getIndex(), ['group' => 'main', 'id' => '99']]);
 })->with('compiled pcre ir matchers');
 
 it('keeps 405 and automatic options semantics on dynamic misses', function (Closure $factory): void {
     $get = matcherRevisionRoute('GET', '/resource/{id}');
     $post = matcherRevisionRoute('POST', '/resource/{id}');
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($get);
     $matcher->add($post);
     $matcher->finalize();
 
     $miss = $matcher->matchCompiled('DELETE', '*', '/resource/1');
-    expect($miss)->toBeInstanceOf(MatchOutcome::class)
-        ->and($miss->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED)
+    if (!$miss instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Unsupported method must return a matcher control outcome.');
+    }
+    expect($miss->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED)
         ->and($miss->allowed)->toContain('GET', 'HEAD', 'POST');
 
     $options = $matcher->matchCompiled('OPTIONS', '*', '/resource/1');
-    expect($options)->toBeInstanceOf(MatchOutcome::class)
-        ->and($options->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
+    if (!$options instanceof MatchOutcome) {
+        throw new UnexpectedValueException('OPTIONS must return a matcher control outcome.');
+    }
+    expect($options->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
         ->and($options->allowed)->toContain('GET', 'HEAD', 'POST');
 })->with('compiled pcre ir matchers');
 
@@ -313,7 +342,13 @@ it('compiles one canonical dynamic shape into method-independent terminal metada
 
     $compiled = new CompiledMatcherIndexCompiler()->compile($index->hosts());
     $terminal = $compiled['*']['dynamic_allowed'][3]['terminal'];
+    if ($terminal['type'] !== 'single') {
+        throw new UnexpectedValueException('Uniform dynamic terminal must use the single-route shape.');
+    }
+    $methods = matcherRevisionRequiredMember($terminal, 'methods');
+    if (!is_array($methods)) {
+        throw new UnexpectedValueException('Single-route terminal must declare allowed methods.');
+    }
 
-    expect($terminal['type'])->toBe('single')
-        ->and($terminal['methods'])->toContain('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE');
+    expect($methods)->toContain('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE');
 });

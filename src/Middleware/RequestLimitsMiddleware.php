@@ -22,7 +22,10 @@ final readonly class RequestLimitsMiddleware
 
     private int $resolvedBodyLimit;
 
-    /** @param list<string> $bodyLimitVerbs */
+    /**
+     * @param list<string> $bodyLimitVerbs
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private int $maxHeaderBytes = 8192,
         private int $maxHeaderCount = 100,
@@ -52,7 +55,12 @@ final readonly class RequestLimitsMiddleware
         $this->resolvedBodyLimit = $maxBodyBytes ?? self::phpIniBytes(ini_get('post_max_size'));
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $this->rejectForHeaderLimits($req);
@@ -91,6 +99,11 @@ final readonly class RequestLimitsMiddleware
         return str_starts_with($req->getProtocolVersion(), '1.') ? ['Connection' => 'close'] : [];
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     private function enforceBodyLimit(Request $req): Request
     {
         if (
@@ -120,6 +133,10 @@ final readonly class RequestLimitsMiddleware
         return $buffer === null ? $req : $req->withBody(new StringBody($buffer));
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     private function enforceDeclaredBodyLimit(Request $req): void
     {
         $transferCoded = trim($req->getHeaderLine('Transfer-Encoding')) !== '';
@@ -146,7 +163,11 @@ final readonly class RequestLimitsMiddleware
 
     }
 
-    /** @return array{0:int,1:?string} */
+    /**
+     * @return array{0:int,1:?string}
+     * @throws \RuntimeException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function measureUnknownBody(Request $req, BodyStream $body): array
     {
         $seekable = $body->isSeekable();
@@ -177,7 +198,7 @@ final readonly class RequestLimitsMiddleware
                 }
             }
         } finally {
-            if ($seekable) {
+            if ($position !== null) {
                 $body->seek($position);
             }
         }
@@ -202,6 +223,9 @@ final readonly class RequestLimitsMiddleware
         );
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function rejectForHeaderLimits(Request $req): void
     {
         if ($this->maxHeaderCount <= 0 && $this->maxHeaderBytes <= 0) {
@@ -222,6 +246,9 @@ final readonly class RequestLimitsMiddleware
         $this->rejectIfLimitExceeded($req, $this->maxHeaderBytes, $bytes, 'Request headers too large');
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function rejectIfLimitExceeded(Request $req, int $limit, int $current, string $message): void
     {
         if ($limit > 0 && $current > $limit) {

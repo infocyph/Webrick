@@ -32,8 +32,9 @@
     },
     "require-dev": {
         "infocyph/cachelayer": "^4.0.2",
+        "infocyph/pathwise": "^4.2.1",
         "infocyph/phpforge": "dev-main@dev",
-        "infocyph/runwire": "^3.0",
+        "infocyph/runwire": "^3.0.1",
         "opis/closure": "^4.5",
         "psr/http-factory": "^1.1",
         "psr/http-message": "^2.0"
@@ -41,6 +42,7 @@
     "suggest": {
         "ext-intl": "Enables optional Unicode NFKC normalization in InputSanitizer.",
         "infocyph/cachelayer": "Provides Webrick-tested CacheLayer 4 PSR-6 stores/default response-cache backing and the optional atomic-counter adapter.",
+        "infocyph/pathwise": "Recommended application-level upload/download storage, validation and policy via Pathwise 4; Webrick owns the HTTP boundary.",
         "infocyph/runwire": "Enables the optional Runwire 3 HTTP runtime integration; the host owns workers, event loops and graceful draining.",
         "open-telemetry/exporter-otlp": "Export traces to OpenTelemetry collectors (Jaeger, Zipkin, etc.)",
         "open-telemetry/sdk": "Full OpenTelemetry tracing with automatic span export (auto-detected by TelemetryMiddleware)",
@@ -53,7 +55,10 @@
     "autoload": {
         "psr-4": {
             "Infocyph\\Webrick\\": "src/"
-        }
+        },
+        "files": [
+            "src/Router/Matching/matcher_functions.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
@@ -72,12 +77,17 @@
             "/.agents",
             "/.aws",
             "/.codex",
+            "/.github",
             "/.route-cache",
             "/.route-cache-*",
             "/.runtime-certification",
+            "/benchmark",
+            "/benchmarks",
             "/composer.lock",
+            "/docs/plans",
             "/graphify-out",
             "/phpforge",
+            "/tests",
             "/vendor"
         ]
     },
@@ -90,6 +100,205 @@
         },
         "optimize-autoloader": true,
         "sort-packages": true
+    },
+    "extra": {
+        "phpforge": {
+            "skipper_policy": {
+                "default": "deny",
+                "rules": [
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            "src/Support/HeaderLine.php"
+                        ],
+                        "reason": "Header grammar is validated at SAPI emission; only response-splitting taint is removed. Review on grammar or Psalm sanitizer-model changes.",
+                        "security": {
+                            "sanitizer": "src/Support/HeaderLine.php",
+                            "sha256": "e24139091ae9361b6534f5f7b99f578d37fa97511fac9a85c1823bb55d5c48a4",
+                            "tests": [
+                                "tests/Unit/HeaderLineTest.php"
+                            ]
+                        },
+                        "taint": "header"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            "src/Router/Matching/matcher_functions.php"
+                        ],
+                        "reason": "Filename components cannot contain separators, wrappers or leading dots; the deployment owns the cache directory. Review on filename grammar or Psalm model changes.",
+                        "security": {
+                            "sanitizer": "src/Router/Matching/matcher_functions.php",
+                            "sha256": "ff0c0d8efbd386f6a69a312ce0f850a33c6ce221e9eb9317c36c2bae6b69a749",
+                            "tests": [
+                                "tests/Unit/ShardedMatcherFilenameSecurityTest.php"
+                            ]
+                        },
+                        "taint": "include"
+                    },
+                    {
+                        "directive": "@psalm-suppress",
+                        "issue": "UnusedVariable",
+                        "paths": [
+                            "src/Runtime/Http/RunwireResponseContinuation.php"
+                        ],
+                        "reason": "Psalm 7.10 misses reads through the escaped by-reference drain closure after finally. Clearing releases the retained Fiber; keep until upstream reference escape analysis is corrected."
+                    },
+                    {
+                        "directive": "@psalm-suppress",
+                        "issue": "UnusedMethodCall",
+                        "paths": [
+                            "src/Runtime/Http/RunwireResponseContinuation.php"
+                        ],
+                        "reason": "Psalm 7.10 misclassifies Fiber::suspend as an unused result; suspension transfers execution and is required for I/O. Remove when upstream models suspension effects."
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/cert-server.php"
+                        ],
+                        "reason": "Certification checkout paths are explicitly operator-selected via CLI or host environment; local-only directory validation rejects wrappers, NUL and network shares. Never use this authority boundary for HTTP request input; review on root loading changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/cert-server.php",
+                            "sha256": "ffc915f1d91e4a0f8fe441f312a6912a36bd9970d8b16e81b3e5d4276724a0ae",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "file"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/cert-server.php"
+                        ],
+                        "reason": "Certification checkout paths are explicitly operator-selected via CLI or host environment; local-only directory validation rejects wrappers, NUL and network shares. Never use this authority boundary for HTTP request input; review on root loading changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/cert-server.php",
+                            "sha256": "ffc915f1d91e4a0f8fe441f312a6912a36bd9970d8b16e81b3e5d4276724a0ae",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "ssrf"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/cert-server.php"
+                        ],
+                        "reason": "Certification checkout paths are explicitly operator-selected via CLI or host environment; local-only directory validation rejects wrappers, NUL and network shares. Never use this authority boundary for HTTP request input; review on root loading changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/cert-server.php",
+                            "sha256": "ffc915f1d91e4a0f8fe441f312a6912a36bd9970d8b16e81b3e5d4276724a0ae",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "include"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/analyze-load.php"
+                        ],
+                        "reason": "CLI operators choose local evidence and report paths; canonical local file/directory validation rejects wrappers, NUL and network shares. Data taints and executable-include taint remain intact; review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/analyze-load.php",
+                            "sha256": "7b435b8b476df6ac0719991fa368f60a3641fc9f4b23b378bd784bcdb364ecf4",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "file"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/analyze-load.php"
+                        ],
+                        "reason": "CLI operators choose local evidence and report paths; canonical local file/directory validation rejects wrappers, NUL and network shares. Data taints and executable-include taint remain intact; review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/analyze-load.php",
+                            "sha256": "7b435b8b476df6ac0719991fa368f60a3641fc9f4b23b378bd784bcdb364ecf4",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "ssrf"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/cert-server.php"
+                        ],
+                        "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/cert-server.php",
+                            "sha256": "ffc915f1d91e4a0f8fe441f312a6912a36bd9970d8b16e81b3e5d4276724a0ae",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "url_component"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/cert-server.php"
+                        ],
+                        "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/cert-server.php",
+                            "sha256": "ffc915f1d91e4a0f8fe441f312a6912a36bd9970d8b16e81b3e5d4276724a0ae",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "url_path"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/analyze-load.php"
+                        ],
+                        "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/analyze-load.php",
+                            "sha256": "7b435b8b476df6ac0719991fa368f60a3641fc9f4b23b378bd784bcdb364ecf4",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "url_component"
+                    },
+                    {
+                        "directive": "@psalm-taint-escape",
+                        "paths": [
+                            ".github/certification/analyze-load.php"
+                        ],
+                        "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
+                        "security": {
+                            "sanitizer": ".github/certification/analyze-load.php",
+                            "sha256": "7b435b8b476df6ac0719991fa368f60a3641fc9f4b23b378bd784bcdb364ecf4",
+                            "tests": [
+                                "tests/Unit/CertificationPathBoundaryTest.php"
+                            ]
+                        },
+                        "taint": "url_path"
+                    },
+                    {
+                        "directive": "@psalm-suppress",
+                        "issue": "MissingClassConstType",
+                        "paths": [
+                            "src/Response/Emitter/BaseEmitter.php",
+                            "src/Request/Request.php"
+                        ],
+                        "reason": "Native types on BaseEmitter's two protected constants and Request's five public proxy flags reject valid 6.0.4 subclasses with untyped overrides. Keep both compatibility regressions and remove only at an explicitly breaking release or when Psalm supports this extension contract."
+                    }
+                ]
+            }
+        }
     },
     "scripts": {
         "benchmark": "@php benchmark/hello_matchers.php",

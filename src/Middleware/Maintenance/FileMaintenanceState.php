@@ -11,6 +11,9 @@ final class FileMaintenanceState implements MaintenanceStateInterface
 
     private int $nextRefreshNs = 0;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private readonly string $file,
         private readonly int $refreshMilliseconds = 1000,
@@ -23,6 +26,7 @@ final class FileMaintenanceState implements MaintenanceStateInterface
         }
     }
 
+    #[\Override]
     public function message(): ?string
     {
         $now = hrtime(true);

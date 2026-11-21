@@ -59,6 +59,9 @@ enum HttpMethodEnum: string
         return self::cases();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromString(string $verb): self
     {
         return self::tryFromString($verb)
@@ -68,6 +71,7 @@ enum HttpMethodEnum: string
     /**
      * Known Webrick methods are canonicalized to their registered uppercase form.
      * Unknown extension methods preserve their case because HTTP method tokens are case-sensitive.
+     * @throws \InvalidArgumentException
      */
     public static function normalize(string $verb): string
     {
@@ -84,6 +88,9 @@ enum HttpMethodEnum: string
         return $known instanceof self ? $known->value : $verb;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function tryFromString(string $verb): ?self
     {
         $verb = trim($verb);

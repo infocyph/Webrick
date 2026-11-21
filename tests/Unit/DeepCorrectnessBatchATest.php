@@ -128,8 +128,15 @@ describe('Deep correctness batch A', function () {
         );
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $query['utm_source'] = 'campaign-b';
+        $validatedQuery = [];
+        foreach ($query as $name => $value) {
+            if (!is_string($name) || !is_string($value)) {
+                throw new UnexpectedValueException('Signed URL test requires scalar query parameters.');
+            }
+            $validatedQuery[$name] = $value;
+        }
 
-        $request = Request::fake(query: $query, uri: '/signed');
+        $request = Request::fake(query: $validatedQuery, uri: '/signed');
         $middleware = new VerifySignedUrlMiddleware($config);
         $response = $middleware($request, static fn (): Response => Response::create('ok'));
 

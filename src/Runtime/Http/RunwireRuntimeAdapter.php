@@ -32,6 +32,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     /**
      * @param (callable(HttpRequest): (?CoroutineScope))|null $coroutineScope
      * @param (callable(HttpRequest): (?ScopeContext))|null $scopeContext
+     * @throws \LogicException
      */
     public function __construct(
         ?RunwireContext $runtimeContext = null,
@@ -40,7 +41,11 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         ?callable $scopeContext = null,
         bool $transportCompression = false,
         bool $transportRequestLimits = true,
+        private int $maxRoutingFormBytes = 8_388_608,
     ) {
+        if ($maxRoutingFormBytes <= 0) {
+            throw new \InvalidArgumentException('maxRoutingFormBytes must be positive.');
+        }
         $this->binding = new RunwireRuntimeBinding(
             $runtimeContext,
             $interMix,
@@ -62,11 +67,17 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function context(mixed $nativeRequest = null, mixed $nativeResponse = null, bool $withHost = false): RuntimeRequestContext
     {
         if (!$nativeRequest instanceof HttpRequest || !$nativeResponse instanceof ResponseWriterInterface) {
@@ -81,12 +92,16 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         $formResolved = false;
         $form = [];
         $rawForm = null;
+        $preRoutingResponse = null;
+        $maxRoutingFormBytes = $this->maxRoutingFormBytes;
         $resolveRoutingForm = static function () use (
             $nativeRequest,
             $bodyStream,
+            $maxRoutingFormBytes,
             &$formResolved,
             &$form,
             &$rawForm,
+            &$preRoutingResponse,
         ): array {
             $contentType = $nativeRequest->headers->first('content-type') ?? '';
             if (HttpUtils::baseMediaType($contentType) !== MediaTypeEnum::FORM_URLENCODED->base()) {
@@ -95,7 +110,16 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             if ($formResolved) {
                 return $form;
             }
-            $rawForm = $bodyStream->getContents();
+            $rawForm = $bodyStream->getContentsUpTo($maxRoutingFormBytes);
+            if ($rawForm === null) {
+                $preRoutingResponse = Response::json(
+                    ['error' => 'payload_too_large'],
+                    413,
+                    ['Cache-Control' => 'no-store'],
+                );
+
+                return [];
+            }
             parse_str($rawForm, $parsed);
             $form = self::stringMap($parsed);
             $formResolved = true;
@@ -125,9 +149,16 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             $nativeResponse,
             $execution,
             $scopeBridge,
+            $preRoutingResponse,
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $request = $context->nativeRequest;
@@ -155,8 +186,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
             return;
         }
 
-        $string = $response->getStringBody();
-        if ($string !== null && !$response->isStreaming()) {
+        if (!$response->isStreaming() && ($string = $response->getStringBody()) !== null) {
             self::finish($writer, $cancellation, $string);
 
             return;
@@ -174,13 +204,13 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
     {
         foreach (explode(';', $header) as $pair) {
             $pair = trim($pair);
-            if ($pair === '' || !str_contains($pair, '=')) {
+            $separator = strpos($pair, '=');
+            if ($separator === false) {
                 continue;
             }
-            [$name, $value] = explode('=', $pair, 2);
-            $name = trim($name);
+            $name = trim(substr($pair, 0, $separator));
             if ($name !== '' && !array_key_exists($name, $cookies)) {
-                $cookies[$name] = urldecode(trim($value));
+                $cookies[$name] = urldecode(trim(substr($pair, $separator + 1)));
             }
         }
     }
@@ -227,6 +257,10 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
 
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     * @throws \RuntimeException
+     */
     private static function assertAccepted(WriteResult $result, string $operation): void
     {
         if ($result->accepted()) {
@@ -239,6 +273,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         throw new RuntimeException("Runwire response {$operation} was rejected: {$result->state->value}.");
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     */
     private static function assertNotCancelled(CancellationToken $cancellation): void
     {
         if ($cancellation->isCancelled()) {
@@ -315,7 +352,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if (substr_count($endpoint, ':') !== 1) {
             return [$endpoint, null];
         }
-        [$host, $port] = explode(':', $endpoint, 2);
+        $separator = strpos($endpoint, ':');
+        if ($separator === false) {
+            return [$endpoint, null];
+        }
+        $host = substr($endpoint, 0, $separator);
+        $port = substr($endpoint, $separator + 1);
         if ($host !== '' && preg_match('/^\d{1,5}$/D', $port) === 1 && (int) $port <= 65_535) {
             return [$host, (int) $port];
         }
@@ -323,6 +365,9 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return [$endpoint, null];
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function finish(
         ResponseWriterInterface $writer,
         CancellationToken $cancellation,
@@ -360,24 +405,24 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if ($parts === false || !isset($parts['scheme'])) {
             return $target;
         }
-        $path = (string) ($parts['path'] ?? '/');
+        $path = $parts['path'] ?? '/';
         $path = $path === '' ? '/' : $path;
         $query = isset($parts['query']) ? '?' . $parts['query'] : '';
 
         return $path . $query;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function responseHeaders(Response $response, bool $http2Or3): Headers
     {
         $headers = ResponseWriterSupport::headerMap($response, $http2Or3);
-        $runwire = Headers::fromArray($headers);
-        $size = ResponseWriterSupport::knownLength($response);
-        if ($size !== null && !$runwire->has('content-length')) {
-            $headers['Content-Length'] = [(string) $size];
-            $runwire = Headers::fromArray($headers);
-        }
 
-        return $runwire;
+        return Headers::fromArray(ResponseWriterSupport::withKnownLength(
+            $headers,
+            ResponseWriterSupport::knownLength($response),
+        ));
     }
 
     /** @return array<string,mixed> */
@@ -410,7 +455,7 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         if ($parts === false || !isset($parts['host'])) {
             return null;
         }
-        $host = (string) $parts['host'];
+        $host = $parts['host'];
         if (str_contains($host, ':') && $host[0] !== '[') {
             $host = '[' . $host . ']';
         }
@@ -418,6 +463,12 @@ final readonly class RunwireRuntimeAdapter implements RuntimeAdapterInterface
         return isset($parts['port']) ? $host . ':' . $parts['port'] : $host;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Runtime\Http\RunwireTransportCancellation
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     */
     private static function writeAndAwaitDrain(
         WriteResult $result,
         ResponseWriterInterface $writer,

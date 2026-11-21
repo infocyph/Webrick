@@ -27,7 +27,7 @@ final class CacheControl implements \Stringable
         'stale-if-error' => true,
     ];
 
-    private const array PRIVACY_TOKENS = ['public' => true, 'private' => true];
+    private const array PRIVACY_TOKENS = ['public' => 'public', 'private' => 'private'];
 
     private const array RENDER_ORDER = [
         'no-store',
@@ -49,6 +49,7 @@ final class CacheControl implements \Stringable
     /** @param array<string,string|null> $parts */
     private function __construct(private array $parts = []) {}
 
+    #[\Override]
     public function __toString(): string
     {
         [$standard, $extensions] = self::partitionParts($this->parts);
@@ -121,6 +122,9 @@ final class CacheControl implements \Stringable
         return $directives;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromHeaderBag(HeaderBag $bag): self
     {
         $line = $bag->getHeaderLine('Cache-Control');
@@ -139,56 +143,67 @@ final class CacheControl implements \Stringable
         return new self();
     }
 
+    /** @throws \InvalidArgumentException */
     public function immutable(): self
     {
         return $this->with('immutable');
     }
 
+    /** @throws \InvalidArgumentException */
     public function maxAge(int $seconds): self
     {
         return $this->with('max-age', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function mustRevalidate(): self
     {
         return $this->with('must-revalidate');
     }
 
+    /** @throws \InvalidArgumentException */
     public function noCache(): self
     {
         return $this->with('no-cache');
     }
 
+    /** @throws \InvalidArgumentException */
     public function noStore(): self
     {
         return $this->with('no-store');
     }
 
+    /** @throws \InvalidArgumentException */
     public function private(): self
     {
         return $this->with('private');
     }
 
+    /** @throws \InvalidArgumentException */
     public function proxyRevalidate(): self
     {
         return $this->with('proxy-revalidate');
     }
 
+    /** @throws \InvalidArgumentException */
     public function public(): self
     {
         return $this->with('public');
     }
 
+    /** @throws \InvalidArgumentException */
     public function sMaxAge(int $seconds): self
     {
         return $this->with('s-maxage', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function staleIfError(int $seconds): self
     {
         return $this->with('stale-if-error', $seconds);
     }
 
+    /** @throws \InvalidArgumentException */
     public function staleWhileRevalidate(int $seconds): self
     {
         return $this->with('stale-while-revalidate', $seconds);
@@ -249,7 +264,7 @@ final class CacheControl implements \Stringable
     private static function ingestExtensionOrBoolean(array &$model, string $name, ?string $value): void
     {
         if (isset(self::PRIVACY_TOKENS[$name])) {
-            $model['privacy'][$name] = true;
+            $model['privacy'][self::PRIVACY_TOKENS[$name]] = true;
 
             return;
         }
@@ -438,9 +453,12 @@ final class CacheControl implements \Stringable
 
         $number = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
 
-        return $number === false ? null : (int) $number;
+        return $number === false ? null : $number;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function with(string $token, int|string|null $value = null): self
     {
         $token = strtolower($token);

@@ -105,7 +105,17 @@ it('keeps quoted commas and escaped quotes inside a forwarded element', function
 });
 
 it('uses the first HTTP quality parameter and fails invalid quality closed', function (array $parameters, float $expected) {
-    expect(HttpUtils::parameterQuality($parameters))->toBe($expected);
+    if (!array_is_list($parameters)) {
+        throw new UnexpectedValueException('HTTP quality fixture must contain an ordered list.');
+    }
+    $values = [];
+    foreach ($parameters as $parameter) {
+        if (!is_string($parameter)) {
+            throw new UnexpectedValueException('HTTP quality fixture must contain strings.');
+        }
+        $values[] = $parameter;
+    }
+    expect(HttpUtils::parameterQuality($values))->toBe($expected);
 })->with([
     'default quality' => [[], 1.0],
     'unrelated parameter' => [['level=1'], 1.0],
@@ -129,16 +139,19 @@ it('validates error handler wire configuration at bootstrap', function () {
 
 it('degrades invalid third-party http exception statuses to 500', function () {
     $error = new class extends RuntimeException implements HttpExceptionInterface {
+        #[\Override]
         public function getHeaders(): array
         {
             return [];
         }
 
+        #[\Override]
         public function getPublicMessage(): string
         {
             return 'invalid status';
         }
 
+        #[\Override]
         public function getStatusCode(): int
         {
             return 200;
@@ -272,48 +285,58 @@ it('rejects zero-progress non-eof response streams instead of truncating them', 
             return '';
         }
 
+        #[\Override]
         public function close(): void {}
 
+        #[\Override]
         public function detach(): mixed
         {
             return null;
         }
 
+        #[\Override]
         public function eof(): bool
         {
             return false;
         }
 
+        #[\Override]
         public function getContents(): string
         {
             return '';
         }
 
+        #[\Override]
         public function getMetadata(?string $key = null): mixed
         {
             return $key === null ? [] : null;
         }
 
+        #[\Override]
         public function getSize(): ?int
         {
             return null;
         }
 
+        #[\Override]
         public function isReadable(): bool
         {
             return true;
         }
 
+        #[\Override]
         public function isSeekable(): bool
         {
             return false;
         }
 
+        #[\Override]
         public function isWritable(): bool
         {
             return false;
         }
 
+        #[\Override]
         public function read(int $length): string
         {
             unset($length);
@@ -321,15 +344,19 @@ it('rejects zero-progress non-eof response streams instead of truncating them', 
             return '';
         }
 
+        #[\Override]
         public function rewind(): void {}
 
+        #[\Override]
         public function seek(int $offset, int $whence = SEEK_SET): void {}
 
+        #[\Override]
         public function tell(): int
         {
             return 0;
         }
 
+        #[\Override]
         public function write(string $string): int
         {
             unset($string);

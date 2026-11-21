@@ -19,6 +19,10 @@ use Psr\Log\NullLogger;
 if (!class_exists('SignedUrlCacheController', false)) {
     final readonly class SignedUrlCacheController
     {
+        /**
+         * @throws \InvalidArgumentException
+         * @throws \RuntimeException
+         */
         public static function handle(): Response
         {
             return Response::plaintext('ok');
@@ -28,22 +32,33 @@ if (!class_exists('SignedUrlCacheController', false)) {
 
 /**
  * @return array<string,string>
+ * @throws \UnexpectedValueException
  */
 function signedUrlQuery(string $url): array
 {
     $query = [];
     $queryString = \parse_url($url, \PHP_URL_QUERY);
     if (\is_string($queryString)) {
-        \parse_str($queryString, $query);
+        \parse_str($queryString, $parsed);
+        foreach ($parsed as $name => $value) {
+            if (!is_string($name) || !is_string($value)) {
+                throw new UnexpectedValueException('Signed URL fixture expects scalar query parameters.');
+            }
+            $query[$name] = $value;
+        }
     }
 
     return $query;
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \UnexpectedValueException
+ */
 function requestFromSignedUrl(string $url): Request
 {
     $query = signedUrlQuery($url);
-    $uri = (string) (\parse_url($url, \PHP_URL_SCHEME) !== null
+    $uri = (\parse_url($url, \PHP_URL_SCHEME) !== null
         ? ((string) \parse_url($url, \PHP_URL_SCHEME)) . '://' . ((string) \parse_url($url, \PHP_URL_HOST))
             . ((\parse_url($url, \PHP_URL_PORT) !== null) ? ':' . (string) \parse_url($url, \PHP_URL_PORT) : '')
             . ((string) \parse_url($url, \PHP_URL_PATH))

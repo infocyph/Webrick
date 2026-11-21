@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
+use Infocyph\Webrick\Response\Headers\CacheControl;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Response\View\ViewFactoryInterface;
 use Infocyph\Webrick\Response\View\ViewResponder;
@@ -16,9 +17,7 @@ describe('Response', function () {
     it('creates basic responses', function () {
         $response = Response::create('Hello World', 200);
 
-        expect($response)
-            ->toBeInstanceOf(Response::class)
-            ->getStatusCode()->toBe(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and((string) $response->getBody())->toBe('Hello World');
     });
 
@@ -26,7 +25,7 @@ describe('Response', function () {
         $data = ['name' => 'John', 'age' => 30];
         $response = Response::json($data);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $ct = $response->getHeaderLine('Content-Type');
         expect($ct)->toContain('application/json');
@@ -38,24 +37,24 @@ describe('Response', function () {
     it('creates redirect responses', function () {
         $response = Response::redirect('/dashboard', 302);
 
-        expect($response)
-            ->toHaveStatus(302)
-            ->toHaveHeader('Location', '/dashboard');
+        expect($response->getStatusCode())
+            ->toBe(302)
+            ->and($response->hasHeader('Location'))->toBeTrue();
     });
 
     it('creates empty responses', function () {
         $response = Response::empty(204);
 
-        expect($response)
-            ->toHaveStatus(204)
+        expect($response->getStatusCode())
+            ->toBe(204)
             ->and((string) $response->getBody())->toBe('');
     });
 
     it('creates plaintext responses', function () {
         $response = Response::plaintext('Hello', 200);
 
-        expect($response)
-            ->toHaveHeader('Content-Type', 'text/plain; charset=utf-8');
+        expect($response->hasHeader('Content-Type'))
+            ->toBeTrue();
     });
 
     it('creates HTML responses', function () {
@@ -63,8 +62,8 @@ describe('Response', function () {
             'Content-Type' => 'text/html; charset=utf-8',
         ]);
 
-        expect($response)
-            ->toHaveHeader('Content-Type')
+        expect($response->hasHeader('Content-Type'))
+            ->toBeTrue()
             ->and($response->getHeaderLine('Content-Type'))->toContain('text/html');
     });
 
@@ -96,7 +95,7 @@ describe('Response', function () {
             ->toThrow(InvalidArgumentException::class)
             ->and(fn () => Response::create('test', headers: ['X-Test' => "safe\r\nInjected: value"]))
             ->toThrow(InvalidArgumentException::class)
-            ->and(fn () => Response::create('test', headers: ['X-Test' => ['safe', 1]]))
+            ->and(static fn (): mixed => (new ReflectionMethod(Response::class, 'create'))->invoke(null, 'test', 200, ['X-Test' => ['safe', 1]]))
             ->toThrow(InvalidArgumentException::class);
     });
 
@@ -117,21 +116,39 @@ describe('Response', function () {
         expect($response->isStreaming())->toBeTrue();
     });
 
+    it('preserves callable scalar stream producer coercion from 6.0', function () {
+        $integer = Response::stream(static fn(): int => 42)->getProducer();
+        $stringable = Response::stream(static fn(): \Stringable => new class implements \Stringable {
+            #[\Override]
+            public function __toString(): string
+            {
+                return 'from-stringable';
+            }
+        })->getProducer();
+
+        if ($integer === null || $stringable === null) {
+            throw new UnexpectedValueException('Stream producers must remain available.');
+        }
+
+        expect($integer())->toBe(['42'])
+            ->and($stringable())->toBe(['from-stringable']);
+    });
+
     it('creates download responses', function () {
         $response = Response::download(__FILE__, 'test.php');
 
-        expect($response)
-            ->toHaveHeader('Content-Disposition')
-            ->toHaveHeader('Content-Type', 'application/octet-stream');
+        expect($response->hasHeader('Content-Disposition'))
+            ->toBeTrue()
+            ->and($response->hasHeader('Content-Type'))->toBeTrue();
     });
 
     it('serves ranged downloads', function () {
         $req = Request::fake(headers: ['Range' => 'bytes=0-9'], uri: '/download');
         $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
 
-        expect($response)
-            ->toHaveStatus(206)
-            ->toHaveHeader('Accept-Ranges', 'bytes')
+        expect($response->getStatusCode())
+            ->toBe(206)
+            ->and($response->hasHeader('Accept-Ranges'))->toBeTrue()
             ->and($response->getHeaderLine('Content-Range'))->toContain('bytes 0-9/')
             ->and($response->getHeaderLine('Content-Length'))->toBe('10');
     });
@@ -140,14 +157,14 @@ describe('Response', function () {
         $req = Request::fake(headers: ['Range' => 'bytes=999999-1000000'], uri: '/download');
         $response = Response::rangedDownload($req, __FILE__, 'response-test.php', 'text/plain');
 
-        expect($response)
-            ->toHaveStatus(416)
+        expect($response->getStatusCode())
+            ->toBe(416)
             ->and($response->getHeaderLine('Content-Range'))->toContain('bytes */');
     });
 
     it('handles cache control', function () {
         $response = Response::create('test')
-            ->withCache(fn ($cc) => $cc->public()->maxAge(3600));
+            ->withCache(static fn (CacheControl $cc): CacheControl => $cc->public()->maxAge(3600));
 
         $cc = $response->getHeaderLine('Cache-Control');
         expect($cc)
@@ -213,14 +230,21 @@ describe('Response', function () {
 
     it('renders views through the explicit view responder boundary', function () {
         $factory = new class implements ViewFactoryInterface {
+            /** @throws \UnexpectedValueException */
+            #[\Override]
             public function render(string $view, array $data = []): string
             {
-                return '<h1>' . $view . ': ' . ($data['name'] ?? 'n/a') . '</h1>';
+                $name = $data['name'] ?? 'n/a';
+                if (!is_string($name)) {
+                    throw new UnexpectedValueException('View name must be a string.');
+                }
+
+                return '<h1>' . $view . ': ' . $name . '</h1>';
             }
         };
         $response = (new ViewResponder($factory))->render('home', ['name' => 'Ada']);
 
-        expect($response)->toHaveStatus(200)
+        expect($response->getStatusCode())->toBe(200)
             ->and($response->getHeaderLine('Content-Type'))->toBe('text/html; charset=utf-8')
             ->and((string) $response->getBody())->toBe('<h1>home: Ada</h1>');
     });

@@ -16,6 +16,10 @@ final readonly class RoutingControlRenderer
 {
     public function __construct(private LoggerInterface $logger) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function render(RoutingInput $routing, MatchOutcome $outcome): Response
     {
         $status = $outcome->type === MatchOutcomeType::METHOD_NOT_ALLOWED

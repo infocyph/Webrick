@@ -35,7 +35,10 @@ final readonly class SecurityPolicyMiddleware
         };
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $response = SecurityHeaders::tight(
