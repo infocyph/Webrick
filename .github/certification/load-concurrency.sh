@@ -24,16 +24,14 @@ load_threads() {
     printf '%s\n' "$threads"
 }
 
-# Alternate source order with an even number of trials. A three-trial AB/BA/AB
-# comparison gives the baseline the first measurement twice, causing bias when
-# the first wrk invocation benefits from CPU/cache scheduling.
+# Cross first/second load position with both fixed loopback port roles. Each
+# group of four trials contains the complete 2x2 design, limiting role and time
+# bias without changing workload semantics or performance acceptance budgets.
 load_validate_trials() {
-    local trials="${1:-}"
-    if [[ ! "$trials" =~ ^[1-9][0-9]*$ ]] ||
-       (( trials < 4 || trials % 2 != 0 )); then
-        echo 'Certification requires an even number of paired trials (at least four).' >&2
-        return 1
-    fi
+    case "${1:-}" in
+        4|8|12) return 0 ;;
+        *) echo 'Certification requires 4, 8, or 12 crossed paired trials.' >&2; return 1 ;;
+    esac
 }
 
 load_pair_order() {
@@ -42,9 +40,25 @@ load_pair_order() {
         echo 'Trial must be a positive integer.' >&2
         return 1
     fi
-    if (( trial % 2 == 0 )); then
-        printf '%s\n' candidate baseline
-    else
-        printf '%s\n' baseline candidate
+    case $(((trial - 1) % 4)) in
+        0|3) printf '%s\n' baseline candidate ;;
+        *) printf '%s\n' candidate baseline ;;
+    esac
+}
+
+# Output baseline/candidate ports. The caller starts each process on the
+# selected port and records the mapping in the artifact for auditability.
+load_pair_ports() {
+    local trial="${1:-}" low="${2:-}" high="${3:-}"
+    if [[ ! "$trial" =~ ^[1-9][0-9]*$ ]] ||
+       [[ ! "$low" =~ ^[1-9][0-9]*$ ]] ||
+       [[ ! "$high" =~ ^[1-9][0-9]*$ ]] ||
+       [[ "$low" == "$high" ]]; then
+        echo 'Trial and two distinct numeric ports are required.' >&2
+        return 1
     fi
+    case $(((trial - 1) % 4)) in
+        0|1) printf '%s %s\n' "$low" "$high" ;;
+        *) printf '%s %s\n' "$high" "$low" ;;
+    esac
 }

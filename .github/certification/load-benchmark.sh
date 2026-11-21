@@ -439,12 +439,16 @@ record_pair() {
 run_mode_pair() {
     local mode="$1"
     local -A ports=([baseline]="$2" [candidate]="$3")
-    local trial concurrency workload version
+    local trial concurrency workload version baseline_port candidate_port
     for trial in $(seq 1 "$TRIALS"); do
-        # Match warmup/startup order to the measurement order, balancing both
-        # first and second position equally across even-numbered trials.
-        printf 'mode=%s trial=%s order=%s\n' "$mode" "$trial" \
-            "$(load_pair_order "$trial" | paste -sd, -)" >> "$RESULT_DIR/pair-order.txt"
+        # Rotate ports independently from startup/load order. Four trials
+        # exercise each baseline/candidate × port/first-position combination.
+        read -r baseline_port candidate_port < <(load_pair_ports "$trial" "$2" "$3")
+        ports[baseline]="$baseline_port"
+        ports[candidate]="$candidate_port"
+        printf 'mode=%s trial=%s order=%s baseline_port=%s candidate_port=%s\n' "$mode" "$trial" \
+            "$(load_pair_order "$trial" | paste -sd, -)" "$baseline_port" "$candidate_port" \
+            >> "$RESULT_DIR/pair-order.txt"
         for version in $(load_pair_order "$trial"); do
             if [[ "$version" == baseline ]]; then
                 warm_server "$version" "$BASELINE_ROOT" "$mode" "${ports[baseline]}" "$trial"

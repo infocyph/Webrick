@@ -31,7 +31,7 @@ on:
         default: "10"
         type: string
       trials:
-        description: Even paired trials per workload/concurrency (at least four)
+        description: Crossed paired trials per workload/concurrency (4, 8, or 12)
         required: true
         default: "4"
         type: string

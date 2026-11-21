@@ -10,6 +10,8 @@ on:
       - ".github/workflows/http-aa-control.yml"
       - ".github/workflows/runtime-release-certification.yml"
       - ".github/certification/load-benchmark.sh"
+      - ".github/certification/load-concurrency.sh"
+      - ".github/certification/test-load-pairing.sh"
       - ".github/certification/load-source-control.sh"
       - ".github/certification/test-load-source-control.sh"
   workflow_dispatch:
