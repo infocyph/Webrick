@@ -5,6 +5,17 @@ name: Webrick 6.1 — Full Runtime Release Acceptance
 # The separate HTTP A/A Measurement Control workflow runs independently:
 # its artifacts must not collide with this release run.
 on:
+  push:
+    branches:
+      - feature/risk-admission
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "composer.json"
+      - "composer.lock"
+      - ".github/certification/**"
+      - ".github/workflows/runtime-release-certification.yml"
+      - ".github/workflows/release-acceptance.yml"
   pull_request:
     branches: [main, master, develop, development]
     paths:
