@@ -503,3 +503,16 @@ No performance methodology, worker supervisor behavior, public API, thresholds, 
 At SHA `71afe36340517cdcf655dc07206c51d33b6d3a2d`, renewed [Security & Standards #45022179996](https://github.com/infocyph/Webrick/actions/runs/45022179996) reported **Psalm PASS on all PHP 8.4/8.5/8.6 lanes**, but **PHPStan FAIL (15 method-on-null/string-null findings)** across exactly the same four test files. The former Pest `expect(...)->not->toBeNull()` was honored as narrowing by Psalm but not by PHPStan; replacing the former null-safe calls with direct calls was therefore insufficient.
 
 Corrective action: enforce explicit executable null/type guards **before** subsequent test expressions, retain exact behavioral comparisons, eliminate redundant Pest assertions, and avoid skip/suppression directives. This is a test-only source change; no runtime logic, API, dependency, or CI acceptance threshold is altered. New-source-SHA analysis and functional CI must be verified before closing the batch.
+
+
+### RW31 final functional and static QA acceptance — 2026-11-22
+
+**Verified source SHA:** `dde5e1457ad8904241a2dad2437b6497312d9677` ([PR #59](https://github.com/infocyph/Webrick/pull/59)). All relevant **non-performance** jobs below completed successfully at that same code SHA:
+
+| Gate | Exact GitHub Actions evidence | Verdict |
+| --- | --- | --- |
+| Runwire 3.1 functional integration | [Run #45022432337](https://github.com/infocyph/Webrick/actions/runs/45022432337) | **PASS**, PHP 8.4 and 8.5; Runwire resolved to `3.1.0.0`, 34 tests/323 assertions each plus live H1/H2, file/range, cancellation and zero unexpected worker exits |
+| Security & Standards | [Run #45022432765](https://github.com/infocyph/Webrick/actions/runs/45022432765) | **PASS**, Sphinx, archived no-dev consumer, clean install, all QA PHP 8.4/8.5/8.6 prefer-lowest and prefer-stable, dedicated Psalm/PHPStan analysis in all three versions |
+| PR checks | [Run #45022431061](https://github.com/infocyph/Webrick/actions/runs/45022431061) | **PASS** |
+
+**Attribution and closure:** Runwire 3.1 includes broken-pipe and fatal-diagnostic fixes, and Webrick 6.1 retains the corrected asynchronous cancellation boundary. Raising the optional dev-only dependency to `^3.1` and the live functional integration verification is complete. The 29 original Psalm failures and subsequent 15 PHPStan failures were resolved in test code without suppressions or behavior changes. The isolated P1/P2 benchmark noise investigations and comparative throughput budgets remain recorded but are **out of scope** at the user's explicit direction; their separately running/failing workflow cannot be silently counted as a release green. This tracker-only update may advance HEAD beyond the verified code SHA, so no new exact-SHA claim is made for its own CI until observed. No merge, tag or release.
