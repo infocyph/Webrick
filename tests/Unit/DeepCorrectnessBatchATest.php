@@ -101,7 +101,7 @@ describe('Deep correctness batch A', function () {
 
         expect($id)->not->toBe(str_repeat('a', 129))
             ->and($id)->not->toBeNull()
-            ->and(strlen((string) $id))->toBeLessThanOrEqual(128);
+            ->and(strlen($id))->toBeLessThanOrEqual(128);
     });
 
     it('rejects noncanonical signed URL numeric configuration', function () {

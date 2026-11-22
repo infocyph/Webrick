@@ -487,3 +487,12 @@ Runwire [3.1](https://github.com/infocyph/Runwire/releases/tag/3.1) has publishe
 Implementation: raise the optional `require-dev` Runwire minimum to `^3.1`, retain the no-dev production package contract and add `.github/workflows/runwire-3.1-integration.yml`. The workflow separately checks PHP 8.4/8.5 cancellation, stream pressure, deployment, live H1/H2, file range, client abort recovery and zero unexpected worker exits. No throughput comparison metrics or acceptance budgets are changed.
 
 Tracking: RW31 committed; exact-SHA GitHub CI results pending. Existing 6.0.4 worker exit 70 issue was attributed to Webrick asynchronous cancellation outside its continuation and is already corrected in 6.1. User-requested performance comparison pause remains in effect; no merge or tag.
+
+
+### Batch RW31-AN — Psalm analyzer drift cleanup (2026-11-22)
+
+At Runwire 3.1 candidate SHA `4992ac69`, functional acceptance [#45021857708](https://github.com/infocyph/Webrick/actions/runs/45021857708) **passed on PHP 8.4 and PHP 8.5**, with actual installed Runwire `3.1.0.0`, 34 targeted tests (323 assertions) each, live HTTP/1.1 and HTTP/2, file/range/cancellation, and no unexpected worker exits. No performance comparison claims are made.
+
+Strict Sphinx, archive no-dev consumer and clean install passed. The independently refreshed PHPForge/Psalm run [#45021857845](https://github.com/infocyph/Webrick/actions/runs/45021857845) initially reported **29 explicit Psalm findings**, confined to four preexisting test files: AttributeRouteLoaderTest (4), DeepCorrectnessBatchATest (1), NativeFileBodyTest (10), PreRoutingGateTest (14); PHPStan passed. These are redundant nullable-safe operations after executable non-null assertions plus one redundant string cast, not Runwire behavioral failures. This batch simplifies those 4 files without suppressions or changing semantics. Verification of this exact new source SHA is pending.
+
+No performance methodology, worker supervisor behavior, public API, thresholds, or protected main/master branches were changed.
