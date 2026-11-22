@@ -120,6 +120,90 @@ function coefficient_of_variation(array $values): float
     return sqrt($sum / (float) ($count - 1)) / $mean * 100.0;
 }
 
+
+/**
+ * Exploratory paired-trial log-ratio CI, not a replacement for hard budgets.
+ *
+ * p99 samples represent per-trial tails, never pooled request histograms.
+ *
+ * @param list<array{trial:int,rps:float,p99_ms:float}> $baseline
+ * @param list<array{trial:int,rps:float,p99_ms:float}> $candidate
+ * @return array{status:string,trial_pairs:int,estimate_ratio?:float,lower_ratio?:float,upper_ratio?:float}
+ */
+function paired_trial_interval(array $baseline, array $candidate, string $metric, float $objective): array
+{
+    $count = count($baseline);
+    $critical = match ($count) {
+        4 => 3.182446,
+        8 => 2.364624,
+        12 => 2.200985,
+        default => null,
+    };
+    if ($critical === null || count($candidate) !== $count) {
+        return ['status' => 'insufficient_or_mismatched_trials', 'trial_pairs' => $count];
+    }
+
+    $logs = [];
+    foreach ($baseline as $index => $sample) {
+        $comparison = $candidate[$index];
+        if ($sample['trial'] !== $comparison['trial']) {
+            return ['status' => 'unpaired_trials', 'trial_pairs' => $count];
+        }
+
+        $original = $sample[$metric];
+        $updated = $comparison[$metric];
+        if ($original <= 0.0 || $updated <= 0.0) {
+            return ['status' => 'unavailable_nonpositive_metric', 'trial_pairs' => $count];
+        }
+        $logs[] = log($updated / $original);
+    }
+
+    $average = array_sum($logs) / (float) $count;
+    $squared = 0.0;
+    foreach ($logs as $value) {
+        $squared += ($value - $average) ** 2;
+    }
+    $halfWidth = $critical * sqrt($squared / ((float) ($count - 1) * $count));
+    $estimate = exp($average);
+    $lower = exp($average - $halfWidth);
+    $upper = exp($average + $halfWidth);
+    if (!is_finite($lower) || !is_finite($upper) || !is_finite($estimate)) {
+        return ['status' => 'nonfinite_interval', 'trial_pairs' => $count];
+    }
+
+    $status = match ($metric) {
+        'rps' => $lower >= $objective ? 'non_inferior'
+            : ($upper < $objective ? 'regression_supported' : 'inconclusive'),
+        'p99_ms' => $upper <= $objective ? 'non_inferior'
+            : ($lower > $objective ? 'regression_supported' : 'inconclusive'),
+        default => 'unknown_metric',
+    };
+
+    return [
+        'status' => $status,
+        'trial_pairs' => $count,
+        'estimate_ratio' => $estimate,
+        'lower_ratio' => $lower,
+        'upper_ratio' => $upper,
+    ];
+}
+
+/** Workload labels are diagnostic only; every existing hard gate remains. */
+function load_scenario(string $workload, int $concurrency): string
+{
+    if (in_array($workload, ['risk_login', 'risk_login_invalid', 'risk_provider_slow', 'slow'], true)) {
+        return 'security_or_provider_contention';
+    }
+
+    if ($concurrency === 50) {
+        return 'high_concurrency_stress';
+    }
+
+    return in_array($workload, ['file', 'range', 'stream', 'upload'], true)
+        ? 'file_or_stream_io'
+        : 'steady_state';
+}
+
 /** @return array<string,string> */
 function cli_options(array $argv): array
 {
@@ -419,10 +503,26 @@ foreach ($aggregates as $mode => $workloads) {
                 );
             }
 
+            $pairedThroughput = paired_trial_interval(
+                $baseline['samples'],
+                $candidate['samples'],
+                'rps',
+                1.0 - $throughputBudget / 100.0,
+            );
+            $pairedP99 = paired_trial_interval(
+                $baseline['samples'],
+                $candidate['samples'],
+                'p99_ms',
+                1.0 + $p99Budget / 100.0,
+            );
+
             $comparisons[] = [
                 'mode' => $mode,
                 'workload' => $workload,
                 'concurrency' => (int) $concurrency,
+                'scenario' => load_scenario($workload, (int) $concurrency),
+                'paired_throughput_ci95_diagnostic' => $pairedThroughput,
+                'paired_p99_ci95_diagnostic' => $pairedP99,
                 'baseline_rpm' => $baseline['median_rpm'],
                 'candidate_rpm' => $candidate['median_rpm'],
                 'baseline_rps_cv_percent' => $baseline['rps_cv_percent'],

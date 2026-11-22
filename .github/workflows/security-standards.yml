@@ -66,6 +66,7 @@ jobs:
           bash -n .github/certification/load-concurrency.sh
           bash .github/certification/test-load-pairing.sh
           bash .github/certification/test-load-source-control.sh
+          bash .github/certification/test-analyze-load-uncertainty.sh
 
       - name: Build Sphinx documentation with strict references
         shell: bash
