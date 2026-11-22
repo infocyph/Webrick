@@ -13,8 +13,16 @@ permissions:
   contents: read
 
 jobs:
+  measurement-calibration:
+    name: Exact-SHA source-identical measurement calibration
+    uses: ./.github/workflows/runtime-release-certification.yml
+    with:
+      aa_control: true
+      benchmark_cpu_isolation: true
+
   full-release:
     name: Full runtime release and performance certification
+    needs: measurement-calibration
     uses: ./.github/workflows/runtime-release-certification.yml
     with:
       aa_control: false
