@@ -525,3 +525,16 @@ Corrective action: enforce explicit executable null/type guards **before** subse
 **Changes in this batch:** make PHP 8.6 the primary archived no-dev consumer and Sphinx workflow PHP runtime (`security-standards.yml`), while retaining the additional 8.4 no-dev consumer. Expand live Runwire 3.1 cancellation/HTTP/worker-lifecycle functional integration from PHP 8.4/8.5 to **8.6, 8.5, 8.4**. Keep Webrick composer requirement `php: ^8.4`, which supports all three. The benchmark comparison workflow's PHP 8.5 host and PHP-FPM binaries remain intentionally pinned to avoid changing the baseline-to-candidate measurement environment during the user-directed performance-comparison pause. Do not conflate PHP 8.6 CI default with raising Webrick's PHP minimum.
 
 **Acceptance:** new exact-SHA PHP 8.6/8.5/8.4 Runwire functional matrix, full PHPForge Security & Standards (including strict Sphinx and both archive consumers), and PR checks must pass; record actual run IDs and outcomes, not assumptions. No performance threshold, product runtime, public API, main/master, release tag or merge changes.
+
+
+### RW86 exact-source acceptance — 2026-11-22
+
+At verified PHP 8.6 adoption source SHA [`d0bf46f`](https://github.com/infocyph/Webrick/commit/d0bf46f7b9c05e80c5317629266b598ae0f380d1), all non-performance gates completed with **SUCCESS**:
+
+| Verification | Exact run | Outcome |
+| --- | --- | --- |
+| Runwire 3.1 Functional Integration, PHP 8.6, 8.5, 8.4 | [#45023111962](https://github.com/infocyph/Webrick/actions/runs/45023111962) | **PASS** all 3 jobs, including live worker/cancellation/HTTP correctness checks |
+| Security & Standards (PHPForge default 8.4–8.6) | [#45023112276](https://github.com/infocyph/Webrick/actions/runs/45023112276) | **PASS** dedicated Psalm/PHPStan 8.4/8.5/8.6, prefer-stable/prefer-lowest QA, clean install, strict Sphinx and both archive consumers (main smoke on PHP 8.6; compatibility smoke on PHP 8.4) |
+| PR #59 integration checks | [#45023108201](https://github.com/infocyph/Webrick/actions/runs/45023108201) | **PASS** |
+
+PHP 8.6 is now the primary no-dev archive validation runtime and included in the Runwire 3.1 functional test matrix; the supported minimum remains PHP 8.4 (`^8.4`). PHPForge `resources/runtime.php` already includes 8.4/8.5/8.6, so no PHPForge changes were needed. Historical performance tests retain a pinned PHP 8.5 comparable baseline, per the explicit decision to leave performance comparisons alone. These successful results apply to the exact code SHA **d0bf46f**, not to this subsequent tracker-only commit until its own CI completes. No protected-branch modification, automatic merge, tag, or release.
