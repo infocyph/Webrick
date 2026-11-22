@@ -5,17 +5,20 @@ import json
 import pathlib
 
 CONCURRENCIES = (1, 5, 20, 50)
+ARTIFACT_PREFIXES = ("webrick-http", "webrick-aa-http", "webrick-release-http")
 
 
-def merge_shards(root, output, mode, candidate_sha):
-    expected = {f"webrick-http-{mode}-c{count}" for count in CONCURRENCIES}
+def merge_shards(root, output, mode, candidate_sha, artifact_prefix="webrick-http"):
+    if artifact_prefix not in ARTIFACT_PREFIXES:
+        raise ValueError("Unsupported concurrency shard artifact prefix")
+    expected = {f"{artifact_prefix}-{mode}-c{count}" for count in CONCURRENCIES}
     if {entry.name for entry in root.iterdir()} != expected:
         raise ValueError("Expected exactly four concurrency shard directories")
 
     common_environment = None
     rows = []
     for count in CONCURRENCIES:
-        shard = root / f"webrick-http-{mode}-c{count}"
+        shard = root / f"{artifact_prefix}-{mode}-c{count}"
         environment = (shard / "environment.txt").read_text().splitlines()
         for prefix in ("baseline_sha=", "candidate_sha=", "php_version=", "benchmark_mode=",
                        "benchmark_concurrency=", "infocyph/runwire ", "infocyph/intermix "):
@@ -57,5 +60,6 @@ if __name__ == "__main__":
     parser.add_argument("output", type=pathlib.Path)
     parser.add_argument("mode", choices=("sapi", "runwire"))
     parser.add_argument("candidate_sha")
+    parser.add_argument("--artifact-prefix", choices=ARTIFACT_PREFIXES, default="webrick-http")
     args = parser.parse_args()
-    merge_shards(args.root, args.output, args.mode, args.candidate_sha)
+    merge_shards(args.root, args.output, args.mode, args.candidate_sha, args.artifact_prefix)

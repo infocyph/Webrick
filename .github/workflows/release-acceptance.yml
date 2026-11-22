@@ -1,23 +1,15 @@
 name: Webrick 6.1 — Full Runtime Release Acceptance
 
-# CI-only acceptance trigger. This reusable release gate runs against the
-# exact PR branch SHA, including the normal 6.0.4 -> 6.1 comparison.
+# CI-only acceptance trigger. Use code-relevant feature branch pushes once,
+# not both push and pull_request, which previously duplicated hour-long
+# certifications for the same PR SHA. The PR's normal QA remains separate.
+# The release gate uses the exact branch SHA for its 6.0.4 -> 6.1 comparison.
 # The separate HTTP A/A Measurement Control workflow runs independently:
 # its artifacts must not collide with this release run.
 on:
   push:
     branches:
       - feature/risk-admission
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "composer.json"
-      - "composer.lock"
-      - ".github/certification/**"
-      - ".github/workflows/runtime-release-certification.yml"
-      - ".github/workflows/release-acceptance.yml"
-  pull_request:
-    branches: [main, master, develop, development]
     paths:
       - "src/**"
       - "tests/**"

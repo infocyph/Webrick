@@ -532,7 +532,8 @@ jobs:
 
       - name: Merge matching shards and enforce complete-matrix budgets
         run: |
-          python3 .github/certification/merge-load-shards.py shards cert-results "$CERT_MODE" "$CERT_CANDIDATE_SHA"
+          python3 .github/certification/merge-load-shards.py shards cert-results "$CERT_MODE" "$CERT_CANDIDATE_SHA" \
+            --artifact-prefix="webrick-${{ inputs.aa_control && 'aa' || 'release' }}-http"
           php .github/certification/analyze-load.php \
             --input="$PWD/cert-results/load-results.jsonl" \
             --summary="$PWD/cert-results/summary.md" \

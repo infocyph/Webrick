@@ -4,6 +4,7 @@ import importlib.util
 import json
 import pathlib
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -23,6 +24,7 @@ class ShardEvidenceTest(unittest.TestCase):
         self.root = pathlib.Path(self.directory.name) / "shards"
         self.root.mkdir()
         self.output = pathlib.Path(self.directory.name) / "merged"
+        self.artifact_prefix = "webrick-http"
         for count in MERGER.CONCURRENCIES:
             shard = self.root / f"webrick-http-runwire-c{count}"
             shard.mkdir()
@@ -46,8 +48,14 @@ class ShardEvidenceTest(unittest.TestCase):
                         }))
             (shard / "load-results.jsonl").write_text("\n".join(rows) + "\n")
 
+    def select_artifact_prefix(self, new_prefix):
+        for count in MERGER.CONCURRENCIES:
+            (self.root / f"{self.artifact_prefix}-runwire-c{count}").rename(
+                self.root / f"{new_prefix}-runwire-c{count}")
+        self.artifact_prefix = new_prefix
+
     def merge(self):
-        MERGER.merge_shards(self.root, self.output, "runwire", "head")
+        MERGER.merge_shards(self.root, self.output, "runwire", "head", self.artifact_prefix)
 
     def analyze(self):
         return subprocess.run([
@@ -63,6 +71,29 @@ class ShardEvidenceTest(unittest.TestCase):
         data = json.loads((self.output / "comparison.json").read_text())
         self.assertEqual(384, data["observed_rows"])
         self.assertEqual(64, len(data["comparisons"]))
+
+    def test_namespaced_artifacts_pass_real_cli_and_analyzer(self):
+        for prefix in ("webrick-aa-http", "webrick-release-http"):
+            with self.subTest(prefix=prefix):
+                self.select_artifact_prefix(prefix)
+                result = subprocess.run([
+                    sys.executable, str(DIRECTORY / "merge-load-shards.py"),
+                    str(self.root), str(self.output), "runwire", "head",
+                    "--artifact-prefix", prefix,
+                ], capture_output=True, text=True, check=False)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(0, self.analyze().returncode)
+
+    def test_mixed_aa_release_artifacts_rejected(self):
+        self.select_artifact_prefix("webrick-aa-http")
+        (self.root / "webrick-aa-http-runwire-c50").rename(
+            self.root / "webrick-release-http-runwire-c50")
+        with self.assertRaisesRegex(ValueError, "exactly four concurrency"):
+            self.merge()
+
+    def test_invalid_artifact_prefix_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported"):
+            MERGER.merge_shards(self.root, self.output, "runwire", "head", "webrick-other-http")
 
     def test_missing_shard_rejected(self):
         (self.root / "webrick-http-runwire-c50").rename(self.root / "wrong-shard")
