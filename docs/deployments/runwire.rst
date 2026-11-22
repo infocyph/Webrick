@@ -1,9 +1,9 @@
 Runwire Runtime
 ===============
 
-Webrick 6 can run behind Runwire 3.0 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+Webrick 6.1 can run behind Runwire 3.1 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
 
-Use Runwire 3.0 or later for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
+Use Runwire 3.1 or later for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries, expected broken-pipe stream-write handling, and bounded worker-fatal diagnostics. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
 
 Choose the Runwire bridge when the application wants Runwire to own runtime selection, worker/process lifecycle, request cancellation/deadlines, drain/shutdown behavior and runtime metrics while Webrick remains the HTTP routing/application kernel.
 
@@ -30,6 +30,12 @@ Responsibilities stay with one owner:
 - **The host application/framework** owns the application ``ContainerBuilder``, compiled release artifacts, configuration and the final runtime choice.
 
 Do not add a second lifecycle engine, a second request-scope store or a second response completion path around this bridge.
+
+Runwire 3.1 also tightens authorization for *outbound* PSR HTTP bridge requests.
+Webrick's native inbound router and runtime adapter do not invoke that
+outbound bridge. A host using it independently must configure explicit
+trusted destination authorization under Runwire's 3.1 contract; do not
+assume that upgrading the inbound Webrick bridge grants outbound access.
 
 InterMix 11 borrowed request scope
 ----------------------------------
