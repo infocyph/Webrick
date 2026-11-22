@@ -205,6 +205,24 @@ stop_server() {
     return 1
 }
 
+assert_benchmark_port_released() {
+    local port="$1"
+    local attempt
+    # A parent can exit before an FPM, Nginx or Runwire descendant
+    # releases the listening socket. Reject leftover workers before
+    # switching to the other measured version.
+    for attempt in {1..30}; do
+        if ! curl --silent --output /dev/null --connect-timeout 1 --max-time 1 \
+            "http://127.0.0.1:${port}/cert/static"; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "Benchmark port ${port} is still serving after parent shutdown." >&2
+    return 1
+}
+
 field() {
     local pattern="$1"
     local file="$2"
@@ -474,6 +492,7 @@ run_mode_pair() {
                 warm_server "$version" "$root" "$mode" "${ports[$version]}" "$trial" "$concurrency"
                 record_suite "$version" "$mode" "$concurrency" "$trial"
                 stop_server "${SERVER_PIDS[$version]}"
+                assert_benchmark_port_released "${ports[$version]}"
                 unset 'SERVER_PIDS[$version]' 'SERVER_PORTS[$version]'
                 if [[ "$mode" == runwire ]]; then
                     cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}"
