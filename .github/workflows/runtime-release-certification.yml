@@ -289,7 +289,7 @@ jobs:
       CERT_CONCURRENCY: ${{ matrix.concurrency }}
       CERT_AA_CONTROL: ${{ inputs.aa_control && '1' || '0' }}
       IC_REDIS_HOST: 127.0.0.1
-      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '4' }}
+      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || (inputs.aa_control && '8' || '4') }}
       CERT_DURATION_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.duration_seconds || '10' }}
       CERT_RUNWIRE_TAIL_SECONDS: '30'
     steps:
@@ -506,7 +506,7 @@ jobs:
         mode: [sapi, runwire]
     env:
       CERT_MODE: ${{ matrix.mode }}
-      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || '4' }}
+      CERT_TRIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.trials || (inputs.aa_control && '8' || '4') }}
       CERT_THROUGHPUT_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.throughput_regression_percent || '2' }}
       CERT_P99_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}
       CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
