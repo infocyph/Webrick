@@ -99,8 +99,11 @@ describe('Deep correctness batch A', function () {
         $request = Request::fake(headers: ['X-Request-Id' => str_repeat('a', 129)]);
         $id = TelemetrySupport::deriveRequestId($request, true, 'X-Request-Id', true);
 
+        if ($id === null) {
+            throw new RuntimeException('Expected a regenerated request ID.');
+        }
+
         expect($id)->not->toBe(str_repeat('a', 129))
-            ->and($id)->not->toBeNull()
             ->and(strlen($id))->toBeLessThanOrEqual(128);
     });
 

@@ -20,8 +20,11 @@ test('active maintenance gate returns requestless parity response', function ():
 
     $response = $gate->evaluate(new RoutingInput('GET', '/orders'));
 
-    expect($response)->not->toBeNull()
-        ->and($response->getStatusCode())->toBe(503)
+    if ($response === null) {
+        throw new RuntimeException('Expected an active maintenance response.');
+    }
+
+    expect($response->getStatusCode())->toBe(503)
         ->and((string) $response->getBody())->toBe("503 Service Unavailable\nDeploying")
         ->and($response->getHeaderLine('Retry-After'))->toBe('120')
         ->and($response->getHeaderLine('Content-Type'))->toBe(MediaTypeEnum::PLAIN->value)

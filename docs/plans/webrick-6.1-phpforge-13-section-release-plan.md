@@ -496,3 +496,10 @@ At Runwire 3.1 candidate SHA `4992ac69`, functional acceptance [#45021857708](ht
 Strict Sphinx, archive no-dev consumer and clean install passed. The independently refreshed PHPForge/Psalm run [#45021857845](https://github.com/infocyph/Webrick/actions/runs/45021857845) initially reported **29 explicit Psalm findings**, confined to four preexisting test files: AttributeRouteLoaderTest (4), DeepCorrectnessBatchATest (1), NativeFileBodyTest (10), PreRoutingGateTest (14); PHPStan passed. These are redundant nullable-safe operations after executable non-null assertions plus one redundant string cast, not Runwire behavioral failures. This batch simplifies those 4 files without suppressions or changing semantics. Verification of this exact new source SHA is pending.
 
 No performance methodology, worker supervisor behavior, public API, thresholds, or protected main/master branches were changed.
+
+
+### Batch RW31-AN2 — reconcile PHPStan and Psalm runtime type narrowing (2026-11-22)
+
+At SHA `71afe36340517cdcf655dc07206c51d33b6d3a2d`, renewed [Security & Standards #45022179996](https://github.com/infocyph/Webrick/actions/runs/45022179996) reported **Psalm PASS on all PHP 8.4/8.5/8.6 lanes**, but **PHPStan FAIL (15 method-on-null/string-null findings)** across exactly the same four test files. The former Pest `expect(...)->not->toBeNull()` was honored as narrowing by Psalm but not by PHPStan; replacing the former null-safe calls with direct calls was therefore insufficient.
+
+Corrective action: enforce explicit executable null/type guards **before** subsequent test expressions, retain exact behavioral comparisons, eliminate redundant Pest assertions, and avoid skip/suppression directives. This is a test-only source change; no runtime logic, API, dependency, or CI acceptance threshold is altered. New-source-SHA analysis and functional CI must be verified before closing the batch.
