@@ -1,0 +1,23 @@
+name: Webrick 6.1 — Full Runtime Release Acceptance
+
+# CI-only acceptance trigger. This reusable release gate runs against the
+# exact PR branch SHA, including the normal 6.0.4 -> 6.1 comparison.
+# The separate HTTP A/A Measurement Control workflow runs independently:
+# its artifacts must not collide with this release run.
+on:
+  push:
+    branches:
+      - feature/risk-admission
+    paths:
+      - ".github/workflows/release-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-release:
+    name: Full runtime release and performance certification
+    uses: ./.github/workflows/runtime-release-certification.yml
+    with:
+      aa_control: false

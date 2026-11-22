@@ -9,6 +9,7 @@ on:
       - "tests/Unit/Runwire*"
       - "tests/Integration/Runwire*"
       - ".github/workflows/runwire-3.1-integration.yml"
+      - ".github/workflows/release-acceptance.yml"
 permissions:
   contents: read
 jobs:
