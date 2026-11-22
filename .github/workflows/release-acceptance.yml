@@ -10,6 +10,7 @@ on:
       - feature/risk-admission
     paths:
       - ".github/workflows/release-acceptance.yml"
+      - ".github/workflows/runtime-release-certification.yml"
   workflow_dispatch:
 
 permissions:
@@ -21,3 +22,4 @@ jobs:
     uses: ./.github/workflows/runtime-release-certification.yml
     with:
       aa_control: false
+      benchmark_cpu_isolation: true

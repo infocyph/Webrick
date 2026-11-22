@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      benchmark_cpu_isolation:
+        description: Use disjoint dedicated CPU sets for server and benchmark load
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - feature/runwire
@@ -332,6 +337,41 @@ jobs:
             fi
             sleep "$((attempt * 5))"
           done
+
+      - name: Isolate the measured server and load-generator CPU sets
+        if: ${{ inputs.benchmark_cpu_isolation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cert-results
+          python3 - <<'PY'
+          import os
+          cpus = sorted(os.sched_getaffinity(0))
+          if len(cpus) < 4:
+              raise SystemExit("CPU-isolated certification requires at least four schedulable CPUs.")
+          servers, clients = cpus[:-2], cpus[-2:]
+          if not servers or not clients or set(servers) & set(clients):
+              raise SystemExit("Invalid overlapping server/load affinity selection.")
+          def format_cpus(items: list[int]) -> str:
+              return ",".join(map(str, items))
+          settings = {
+              "CERT_SERVER_CPUS": format_cpus(servers),
+              "CERT_LOAD_CPUS": format_cpus(clients),
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              for key, value in settings.items():
+                  env.write(f"{key}={value}\n")
+          with open("cert-results/affinity.txt", "w", encoding="utf-8") as evidence:
+              evidence.write(f"allowed_cpu_set={format_cpus(cpus)}\n")
+              for key, value in settings.items():
+                  evidence.write(f"{key}={value}\n")
+          print(f"CPU-isolated benchmark: servers={settings['CERT_SERVER_CPUS']}, load={settings['CERT_LOAD_CPUS']}")
+          PY
+          server_cpus="$(sed -n 's/^CERT_SERVER_CPUS=//p' cert-results/affinity.txt)"
+          load_cpus="$(sed -n 's/^CERT_LOAD_CPUS=//p' cert-results/affinity.txt)"
+          taskset -c "$server_cpus" true
+          taskset -c "$load_cpus" true
+          { uname -a; lscpu | grep -E '^(Model name|CPU\(s\)|Thread\(s\) per core):' || true; } >> cert-results/affinity.txt
 
       - name: Download the prepared dependency trees
         uses: actions/download-artifact@v8

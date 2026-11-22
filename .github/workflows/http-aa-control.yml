@@ -25,3 +25,4 @@ jobs:
     uses: ./.github/workflows/runtime-release-certification.yml
     with:
       aa_control: true
+      benchmark_cpu_isolation: true
