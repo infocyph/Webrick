@@ -155,7 +155,7 @@ function paired_trial_interval(array $baseline, array $candidate, string $metric
         if ($original <= 0.0 || $updated <= 0.0) {
             return ['status' => 'unavailable_nonpositive_metric', 'trial_pairs' => $count];
         }
-        $logs[] = log($updated / $original);
+        $logs[] = log((float) $updated / (float) $original);
     }
 
     $average = array_sum($logs) / (float) $count;
@@ -163,7 +163,7 @@ function paired_trial_interval(array $baseline, array $candidate, string $metric
     foreach ($logs as $value) {
         $squared += ($value - $average) ** 2;
     }
-    $halfWidth = $critical * sqrt($squared / ((float) ($count - 1) * $count));
+    $halfWidth = $critical * sqrt($squared / ((float) ($count - 1) * (float) $count));
     $estimate = exp($average);
     $lower = exp($average - $halfWidth);
     $upper = exp($average + $halfWidth);

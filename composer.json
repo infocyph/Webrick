@@ -205,7 +205,7 @@
                         "reason": "CLI operators choose local evidence and report paths; canonical local file/directory validation rejects wrappers, NUL and network shares. Data taints and executable-include taint remain intact; review on path or input-source changes.",
                         "security": {
                             "sanitizer": ".github/certification/analyze-load.php",
-                            "sha256": "2024f4f8ec86534da72e1dc459f07c58ea6c405c89062adccb89d231beb9fab2",
+                            "sha256": "79691b69802ead1bffea6a5b0457becf965966828a77452ccae8f9dd698cc310",
                             "tests": [
                                 "tests/Unit/CertificationPathBoundaryTest.php"
                             ]
@@ -220,7 +220,7 @@
                         "reason": "CLI operators choose local evidence and report paths; canonical local file/directory validation rejects wrappers, NUL and network shares. Data taints and executable-include taint remain intact; review on path or input-source changes.",
                         "security": {
                             "sanitizer": ".github/certification/analyze-load.php",
-                            "sha256": "2024f4f8ec86534da72e1dc459f07c58ea6c405c89062adccb89d231beb9fab2",
+                            "sha256": "79691b69802ead1bffea6a5b0457becf965966828a77452ccae8f9dd698cc310",
                             "tests": [
                                 "tests/Unit/CertificationPathBoundaryTest.php"
                             ]
@@ -265,7 +265,7 @@
                         "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
                         "security": {
                             "sanitizer": ".github/certification/analyze-load.php",
-                            "sha256": "2024f4f8ec86534da72e1dc459f07c58ea6c405c89062adccb89d231beb9fab2",
+                            "sha256": "79691b69802ead1bffea6a5b0457becf965966828a77452ccae8f9dd698cc310",
                             "tests": [
                                 "tests/Unit/CertificationPathBoundaryTest.php"
                             ]
@@ -280,7 +280,7 @@
                         "reason": "Only operator-selected, validated local filesystem names reach these certification I/O calls. URL taints here represent network authority, not URL encoding; never use this boundary for request input or URL construction. Review on path or input-source changes.",
                         "security": {
                             "sanitizer": ".github/certification/analyze-load.php",
-                            "sha256": "2024f4f8ec86534da72e1dc459f07c58ea6c405c89062adccb89d231beb9fab2",
+                            "sha256": "79691b69802ead1bffea6a5b0457becf965966828a77452ccae8f9dd698cc310",
                             "tests": [
                                 "tests/Unit/CertificationPathBoundaryTest.php"
                             ]
