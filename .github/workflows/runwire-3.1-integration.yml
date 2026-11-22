@@ -43,6 +43,7 @@ jobs:
       - name: Verify continuation, cancellation, pressure and deployment
         run: |
           vendor/bin/pest --configuration=vendor/infocyph/phpforge/resources/pest.xml \
+            --bootstrap=vendor/autoload.php \
             tests/Unit/RunwireRuntimeApplicationTest.php \
             tests/Unit/RunwireRuntimeAdapterTest.php \
             tests/Integration/RunwireResponsePressureCancellationTest.php \
