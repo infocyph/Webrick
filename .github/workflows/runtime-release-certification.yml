@@ -112,7 +112,7 @@ jobs:
       - name: Download current-run dependencies
         uses: actions/download-artifact@v8
         with:
-          name: performance-dependencies
+          name: ${{ inputs.aa_control && 'aa-performance-dependencies' || 'release-performance-dependencies' }}
           path: .performance-dependencies
 
       - name: Restore candidate dependencies and lock
@@ -268,7 +268,7 @@ jobs:
       - name: Publish current-run dependency trees
         uses: actions/upload-artifact@v7
         with:
-          name: performance-dependencies
+          name: ${{ inputs.aa_control && 'aa-performance-dependencies' || 'release-performance-dependencies' }}
           path: performance-dependencies.tar.gz
           compression-level: 0
           if-no-files-found: error
@@ -355,7 +355,7 @@ jobs:
       - name: Download the prepared dependency trees
         uses: actions/download-artifact@v8
         with:
-          name: performance-dependencies
+          name: ${{ inputs.aa_control && 'aa-performance-dependencies' || 'release-performance-dependencies' }}
           path: .performance-dependencies
 
       - name: Restore prepared dependencies and locks
@@ -490,7 +490,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: webrick-http-${{ matrix.mode }}-c${{ matrix.concurrency }}
+          name: webrick-${{ inputs.aa_control && 'aa' || 'release' }}-http-${{ matrix.mode }}-c${{ matrix.concurrency }}
           path: cert-results/
           if-no-files-found: error
 
@@ -527,7 +527,7 @@ jobs:
       - name: Download all concurrency evidence
         uses: actions/download-artifact@v8
         with:
-          pattern: webrick-http-${{ matrix.mode }}-c*
+          pattern: webrick-${{ inputs.aa_control && 'aa' || 'release' }}-http-${{ matrix.mode }}-c*
           path: shards
 
       - name: Merge matching shards and enforce complete-matrix budgets
@@ -553,7 +553,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: webrick-baseline-vs-candidate-http-${{ matrix.mode }}
+          name: webrick-${{ inputs.aa_control && 'aa' || 'release' }}-baseline-vs-candidate-http-${{ matrix.mode }}
           path: cert-results/
           if-no-files-found: error
 
@@ -608,7 +608,7 @@ jobs:
       - name: Download current-run dependencies
         uses: actions/download-artifact@v8
         with:
-          name: performance-dependencies
+          name: ${{ inputs.aa_control && 'aa-performance-dependencies' || 'release-performance-dependencies' }}
           path: .performance-dependencies
 
       - name: Restore candidate dependencies and lock
@@ -688,7 +688,7 @@ jobs:
       - name: Download current-run dependencies
         uses: actions/download-artifact@v8
         with:
-          name: performance-dependencies
+          name: ${{ inputs.aa_control && 'aa-performance-dependencies' || 'release-performance-dependencies' }}
           path: .performance-dependencies
 
       - name: Restore candidate dependencies and lock
