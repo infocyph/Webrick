@@ -338,7 +338,7 @@ jobs:
           done
 
       - name: Isolate the measured server and load-generator CPU sets
-        if: ${{ inputs.benchmark_cpu_isolation }}
+        if: ${{ inputs.benchmark_cpu_isolation || github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -346,8 +346,10 @@ jobs:
           python3 candidate/.github/certification/benchmark-cpu-topology.py --output cert-results/affinity.txt
           server_cpus="$(sed -n 's/^CERT_SERVER_CPUS=//p' cert-results/affinity.txt)"
           load_cpus="$(sed -n 's/^CERT_LOAD_CPUS=//p' cert-results/affinity.txt)"
+          observer_cpus="$(sed -n 's/^CERT_OBSERVER_CPUS=//p' cert-results/affinity.txt)"
           taskset -c "$server_cpus" true
           taskset -c "$load_cpus" true
+          taskset -c "$observer_cpus" true
           { uname -a; lscpu -e=CPU,SOCKET,CORE; } >> cert-results/affinity.txt
 
       - name: Download the prepared dependency trees
@@ -451,30 +453,25 @@ jobs:
 
       - name: Run controlled same-run load matrix
         run: |
-          IFS=, read -ra cpu_ranges < <(awk '$1 == "Cpus_allowed_list:" {print $2}' /proc/self/status)
-          cpus=()
-          for range in "${cpu_ranges[@]}"; do
-            first="${range%%-*}"
-            last="${range##*-}"
-            for ((cpu=first; cpu<=last; ++cpu)); do cpus+=("$cpu"); done
-          done
-          if (( ${#cpus[@]} < 3 )); then
-            echo 'Certification needs distinct CPUs for the server, load client and observer.' >&2
+          # The prior implementation silently overrode the physical-core
+          # assignments from the preceding topology step with CPU indices.
+          # Require the validated role mapping; never fall back to logical IDs.
+          : "${CERT_SERVER_CPUS:?Missing topology-assigned server CPUs}"
+          : "${CERT_LOAD_CPUS:?Missing topology-assigned client CPUs}"
+          : "${CERT_OBSERVER_CPUS:?Missing topology-assigned observer CPUs}"
+          : "${CERT_CPU_ISOLATION_QUALITY:?Missing physical-core quality evidence}"
+          if [[ "${CERT_SERVER_CPUS}" == "${CERT_LOAD_CPUS}" ]]; then
+            echo 'Benchmark server/load roles overlap.' >&2
             exit 1
           fi
-          export CERT_SERVER_CPUS="${cpus[2]}"
-          export CERT_LOAD_CPUS="${cpus[1]}"
-          observer_cpu="${cpus[0]}"
-          if (( ${#cpus[@]} >= 4 )); then
-            CERT_SERVER_CPUS+=",${cpus[3]}"
-          fi
-          printf 'server_cpus=%s\nload_cpu=%s\nobserver_and_redis_cpu=%s\n' \
-            "$CERT_SERVER_CPUS" "$CERT_LOAD_CPUS" "$observer_cpu" > cert-results/cpu-roles.txt
+          printf 'server_cpus=%s\nload_cpu=%s\nobserver_and_redis_cpu=%s\nquality=%s\n' \
+            "$CERT_SERVER_CPUS" "$CERT_LOAD_CPUS" "$CERT_OBSERVER_CPUS" \
+            "$CERT_CPU_ISOLATION_QUALITY" > cert-results/cpu-roles.txt
 
           # Direct loopback avoids connection carryover through Docker's published port.
           IC_REDIS_PORT="$(php -r '$socket = stream_socket_server("tcp://127.0.0.1:0"); if ($socket === false) exit(1); echo substr(strrchr(stream_socket_get_name($socket, false), ":"), 1);')"
           export IC_REDIS_PORT
-          redis="$(docker run --detach --rm --network host --cpuset-cpus="$observer_cpu" redis:7-alpine \
+          redis="$(docker run --detach --rm --network host --cpuset-cpus="$CERT_OBSERVER_CPUS" redis:7-alpine \
             --bind 127.0.0.1 --protected-mode yes --port "$IC_REDIS_PORT" --save '' --appendonly no)"
           trap 'docker stop "$redis" >/dev/null' EXIT
           for attempt in {1..50}; do
@@ -484,7 +481,7 @@ jobs:
             sleep 0.1
           done
           [[ "$(docker exec "$redis" redis-cli -p "$IC_REDIS_PORT" ping)" == PONG ]]
-          taskset -c "$observer_cpu" bash candidate/.github/certification/load-benchmark.sh \
+          taskset -c "$CERT_OBSERVER_CPUS" bash candidate/.github/certification/load-benchmark.sh \
             "$PWD/baseline" "$PWD/candidate" "$PWD/cert-results" \
             "$CERT_DURATION_SECONDS" "$CERT_TRIALS" "$CERT_DURATION_SECONDS" "$CERT_MODE" "$CERT_CONCURRENCY" \
             "$CERT_RUNWIRE_TAIL_SECONDS"
