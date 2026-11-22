@@ -478,3 +478,12 @@ The separate `.github/workflows/http-aa-control.yml` wrapper runs once on these 
 **Ownership and remaining actions:** **Webrick** owns the original worker crash; the corrective code/tests are **already present and passing** in 6.1, so do not introduce redundant production changes. The non-fatal broken-pipe notice leakage (`Runwire 3.0.1 Network/Internal/StreamWriter.php` checks only `E_WARNING`, while PHP emits `E_NOTICE`) and worker-fatal telemetry omission belong to **Runwire**. This GitHub installation returned **403** for both creating a Runwire fix branch and opening a Runwire issue; no Runwire source change or upstream fix is claimed. Keep those separate upstream follow-ups rather than attributing exit 70 to Runwire.
 
 **Incident status: fixed in Webrick PR #59, not backported to protected `main` / `master`.** The detached `main`-based reproduction branch is diagnostic only. PR remains draft and unmerged, and no performance comparison threshold has been weakened or changed.
+
+
+### RW31 — Runwire 3.1 minimum and functional worker acceptance (2026-11-22)
+
+Runwire [3.1](https://github.com/infocyph/Runwire/releases/tag/3.1) has published with the previously requested bounded fatal diagnostics and broken-pipe notice handling. PSR outbound bridge exact-URI authorization is a new direct-caller requirement; GitHub code search found no direct PsrMessageBridge usage in Webrick.
+
+Implementation: raise the optional `require-dev` Runwire minimum to `^3.1`, retain the no-dev production package contract and add `.github/workflows/runwire-3.1-integration.yml`. The workflow separately checks PHP 8.4/8.5 cancellation, stream pressure, deployment, live H1/H2, file range, client abort recovery and zero unexpected worker exits. No throughput comparison metrics or acceptance budgets are changed.
+
+Tracking: RW31 committed; exact-SHA GitHub CI results pending. Existing 6.0.4 worker exit 70 issue was attributed to Webrick asynchronous cancellation outside its continuation and is already corrected in 6.1. User-requested performance comparison pause remains in effect; no merge or tag.
