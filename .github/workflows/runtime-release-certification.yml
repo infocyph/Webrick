@@ -18,7 +18,6 @@ on:
   push:
     branches:
       - feature/runwire
-      - feature/risk-admission
     # Reserve long certification for changes that can affect runtime behavior.
     # Documentation/tracker-only and unrelated CI changes still receive PR QA.
     # Final exact-SHA certification is always available via workflow_dispatch.
