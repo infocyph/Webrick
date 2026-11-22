@@ -58,6 +58,15 @@ jobs:
           coverage: none
           extensions: redis,intl,brotli,zstd
 
+      - name: Verify performance harness syntax and crossed control plan (without benchmarking)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/certification/load-benchmark.sh
+          bash -n .github/certification/load-concurrency.sh
+          bash .github/certification/test-load-pairing.sh
+          bash .github/certification/test-load-source-control.sh
+
       - name: Build Sphinx documentation with strict references
         shell: bash
         run: |

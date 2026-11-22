@@ -167,7 +167,7 @@ start_server() {
     local port="$3"
     local version="$4"
     local trial="$5"
-    local log="$RESULT_DIR/${version}-t${trial}-${mode}.log"
+    local log="$RESULT_DIR/${version}-t${trial}-c${6:-all}-${mode}.log"
     local admission="$BASELINE_ADMISSION"
     if [[ "$version" == candidate ]]; then
         admission="$CANDIDATE_ADMISSION"
@@ -415,74 +415,73 @@ record_wrk() {
 }
 
 warm_server() {
-    local version="$1" root="$2" mode="$3" port="$4" trial="$5"
+    local version="$1" root="$2" mode="$3" port="$4" trial="$5" concurrency="$6"
     if [[ "$mode" == runwire ]]; then
         SERVER_EVENTS[$version]="$root/.runtime-certification/router.php.supervisor-events.jsonl"
-        EVENT_EVIDENCE[$version]="$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
+        EVENT_EVIDENCE[$version]="$RESULT_DIR/${version}-t${trial}-c${concurrency}-supervisor-events.jsonl"
     fi
-    start_server "$root" "$mode" "$port" "$version" "$trial"
+    start_server "$root" "$mode" "$port" "$version" "$trial" "$concurrency"
     assert_correctness "$port"
     assert_rejection_probes "$mode" "$port"
     "${LOAD_CLIENT[@]}" -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
 }
 
-record_pair() {
-    local mode="$1" concurrency="$2" trial="$3" workload="$4" path="$5"
-    local duration="${6:-$DURATION_SECONDS}"
-    local version
-    for version in $(load_pair_order "$trial"); do
-        record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" \
-            "${SERVER_PORTS[$version]}" "${SERVER_PIDS[$version]}" "$path" "$duration"
+record_suite() {
+    local version="$1" mode="$2" concurrency="$3" trial="$4"
+    local port="${SERVER_PORTS[$version]}" pid="${SERVER_PIDS[$version]}"
+    record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" /cert/static
+    record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" /cert/dynamic/42
+    record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" /cert/json
+    record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" /cert/stream
+    record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" /cert/upload
+    record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" /cert/missing "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" /cert/static "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" /cert/file "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" /cert/file "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" /cert/slow/5 "$PARITY_DURATION_SECONDS"
+    local workload
+    for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
+        record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" "$port" "$pid" "/cert/$workload"
     done
 }
 
 run_mode_pair() {
     local mode="$1"
     local -A ports=([baseline]="$2" [candidate]="$3")
-    local trial concurrency workload version baseline_port candidate_port
+    local trial concurrency version baseline_port candidate_port root
     for trial in $(seq 1 "$TRIALS"); do
-        # Rotate ports independently from startup/load order. Four trials
-        # exercise each baseline/candidate × port/first-position combination.
+        # Preserve four-way order/port crossing; no concurrent idle server.
         read -r baseline_port candidate_port < <(load_pair_ports "$trial" "$2" "$3")
         ports[baseline]="$baseline_port"
         ports[candidate]="$candidate_port"
-        printf 'mode=%s trial=%s order=%s baseline_port=%s candidate_port=%s\n' "$mode" "$trial" \
+        printf 'mode=%s trial=%s order=%s baseline_port=%s candidate_port=%s lifecycle=one-active-server\n' "$mode" "$trial" \
             "$(load_pair_order "$trial" | paste -sd, -)" "$baseline_port" "$candidate_port" \
             >> "$RESULT_DIR/pair-order.txt"
-        for version in $(load_pair_order "$trial"); do
-            if [[ "$version" == baseline ]]; then
-                warm_server "$version" "$BASELINE_ROOT" "$mode" "${ports[baseline]}" "$trial"
-            else
-                warm_server "$version" "$CANDIDATE_ROOT" "$mode" "${ports[candidate]}" "$trial"
-            fi
-        done
-        # Keep matching samples close while running only one load client at a time.
-        for concurrency in $SELECTED_CONCURRENCIES; do
-            record_pair "$mode" "$concurrency" "$trial" static /cert/static
-            record_pair "$mode" "$concurrency" "$trial" dynamic /cert/dynamic/42
-            record_pair "$mode" "$concurrency" "$trial" json /cert/json
-            record_pair "$mode" "$concurrency" "$trial" stream /cert/stream
-            record_pair "$mode" "$concurrency" "$trial" upload /cert/upload
 
-            record_pair "$mode" "$concurrency" "$trial" not_found /cert/missing "$PARITY_DURATION_SECONDS"
-            record_pair "$mode" "$concurrency" "$trial" method_not_allowed /cert/static "$PARITY_DURATION_SECONDS"
-            record_pair "$mode" "$concurrency" "$trial" file /cert/file "$PARITY_DURATION_SECONDS"
-            record_pair "$mode" "$concurrency" "$trial" range /cert/file "$PARITY_DURATION_SECONDS"
-            record_pair "$mode" "$concurrency" "$trial" slow /cert/slow/5 "$PARITY_DURATION_SECONDS"
-            for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
-                record_pair "$mode" "$concurrency" "$trial" "$workload" "/cert/$workload"
+        for concurrency in $SELECTED_CONCURRENCIES; do
+            # Run the unchanged 16-workload suite against one active process
+            # group at a time. Previously both servers stayed alive during
+            # every sample, sharing the server CPU pool even when not targeted.
+            for version in $(load_pair_order "$trial"); do
+                if [[ -n "${SERVER_PIDS[baseline]:-}" || -n "${SERVER_PIDS[candidate]:-}" ]]; then
+                    echo 'Benchmark lifecycle violated: another server is still active.' >&2
+                    exit 1
+                fi
+                root="$BASELINE_ROOT"
+                if [[ "$version" == candidate ]]; then
+                    root="$CANDIDATE_ROOT"
+                fi
+                warm_server "$version" "$root" "$mode" "${ports[$version]}" "$trial" "$concurrency"
+                record_suite "$version" "$mode" "$concurrency" "$trial"
+                stop_server "${SERVER_PIDS[$version]}"
+                unset 'SERVER_PIDS[$version]' 'SERVER_PORTS[$version]'
+                if [[ "$mode" == runwire ]]; then
+                    cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}"
+                    assert_load_worker_events "${EVENT_EVIDENCE[$version]}"
+                    unset 'SERVER_EVENTS[$version]' 'EVENT_EVIDENCE[$version]'
+                fi
             done
         done
-        for version in baseline candidate; do
-            stop_server "${SERVER_PIDS[$version]}"
-            unset 'SERVER_PIDS[$version]' 'SERVER_PORTS[$version]'
-            if [[ "$mode" == runwire ]]; then
-                cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}"
-                assert_load_worker_events "${EVENT_EVIDENCE[$version]}"
-            fi
-        done
-        SERVER_EVENTS=()
-        EVENT_EVIDENCE=()
     done
 }
 
