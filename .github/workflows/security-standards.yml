@@ -67,6 +67,7 @@ jobs:
           bash .github/certification/test-load-pairing.sh
           bash .github/certification/test-load-source-control.sh
           bash .github/certification/test-analyze-load-uncertainty.sh
+          python3 .github/certification/benchmark-cpu-topology.py --self-test
 
       - name: Build Sphinx documentation with strict references
         shell: bash
