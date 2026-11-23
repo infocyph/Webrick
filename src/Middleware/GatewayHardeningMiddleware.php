@@ -454,5 +454,4 @@ final readonly class GatewayHardeningMiddleware
 
         return $value;
     }
-
 }

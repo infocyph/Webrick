@@ -874,3 +874,8 @@ The preceding [Security & Standards #45103097420](https://github.com/infocyph/We
 ### W02.1 security QA feedback correction — 2026-11-23
 
 [Security & Standards #45103578521](https://github.com/infocyph/Webrick/actions/runs/45103578521), code SHA `d6b8b875`, passed **strict Sphinx/source-free consumer** and **clean install**, with remaining analysis/quality reds in the optional JA4/ASN gateway extension: Psalm reports `MissingThrowsDocblock` for the native `getHeader()` path, and PHPForge Pint reports `ordered_class_elements` / `class_attributes_separation`. This follow-up moves the new private methods into existing alphabetical class order, normalizes method spacing and explicitly documents the native `InvalidArgumentException` propagation. No authorization/fail-closed logic, public signature, benchmark contract, or Foundation dependency changes; W02/W02.1 remain pending complete green QA.
+
+
+### W02.1 PHPForge formatting correction — 2026-11-23
+
+At [Security & Standards #45103942392](https://github.com/infocyph/Webrick/actions/runs/45103942392), PHP 8.4/8.5/8.6 **Psalm/PHPStan analysis passed** and strict Sphinx/no-dev checks passed; remaining Pest/PHPForge quality jobs reported `class_attributes_separation` in the new gateway method group. This correction removes the extra separator before the class-closing brace, without modifying any runtime expression, policy, constructor signature or benchmark. **W02/W02.1 not closed until QA green at this corrected SHA.**
