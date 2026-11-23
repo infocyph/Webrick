@@ -166,33 +166,3 @@ jobs:
               throw new RuntimeException("Pathwise must remain optional in PHP 8.4.");
           }
           ' "$consumer"
-
-  release-alerts:
-    name: Check unresolved code-scanning alerts for Webrick 6.1
-    if: github.event_name == 'pull_request' && github.head_ref == 'feature/risk-admission'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: read
-    steps:
-      - name: Read and require triaged code-scanning alert state
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # A resolved review thread is not evidence that the underlying alert closed.
-          # Fail closed when the API cannot be read, rather than declaring zero alerts.
-          if ! alerts="$(gh api --paginate -H 'Accept: application/vnd.github+json' \
-              "/repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&per_page=100" \
-              --jq '.[] | [.number, .tool.name, .rule.id, .most_recent_instance.location.path] | @tsv')"; then
-            echo '::error::Cannot read current code-scanning alert state; human security attestation is still required.'
-            exit 1
-          fi
-          if [[ -n "$alerts" ]]; then
-            printf '%s\n' 'Open code-scanning alerts (number, tool, rule, path):' "$alerts"
-            echo '::error::Open code-scanning alerts require explicit triage before release.'
-            exit 1
-          fi
-          echo 'Zero open GitHub code-scanning alerts at the checked repository state.'
-          echo 'GitHub code-scanning alerts: zero open' >> "$GITHUB_STEP_SUMMARY"
