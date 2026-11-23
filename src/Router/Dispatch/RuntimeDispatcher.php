@@ -19,6 +19,8 @@ final class RuntimeDispatcher
 {
     private readonly RuntimeDescriptorInvoker $resolver;
 
+    private readonly bool $hasGlobalMiddleware;
+
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];
 
@@ -33,6 +35,7 @@ final class RuntimeDispatcher
         private readonly CompiledRouterArtifact $artifact,
     ) {
         $this->resolver = new RuntimeDescriptorInvoker($runtime->container());
+        $this->hasGlobalMiddleware = $artifact->hasGlobalMiddleware();
     }
 
     /**
@@ -51,6 +54,10 @@ final class RuntimeDispatcher
         }
         if ($attributes !== []) {
             $request = $request->withAttributes($attributes);
+        }
+
+        if ($plan->kind !== ExecutionKind::MIDDLEWARE_PIPELINE && !$this->hasGlobalMiddleware) {
+            return $this->invokeTerminal($plan, $request, $vars);
         }
 
         $pipeline = $this->pipelineFor($plan);
@@ -102,7 +109,7 @@ final class RuntimeDispatcher
 
     public function hasGlobalMiddleware(): bool
     {
-        return $this->artifact->hasGlobalMiddleware();
+        return $this->hasGlobalMiddleware;
     }
 
     /**
@@ -110,6 +117,10 @@ final class RuntimeDispatcher
      */
     public function pipelineRequiresScope(ExecutionPlan $plan): bool
     {
+        if ($plan->kind !== ExecutionKind::MIDDLEWARE_PIPELINE && !$this->hasGlobalMiddleware) {
+            return false;
+        }
+
         return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 

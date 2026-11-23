@@ -57,6 +57,7 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
         $artifact = new RouterArtifactLoader()->load($routerPath, 'production', 'policy-fast-path');
         $dispatcher = new RuntimeDispatcher(new InterMixRuntime($container), $artifact);
         $decoded = new ReflectionProperty($artifact, 'decodedRoutes');
+        $pipelines = new ReflectionProperty($dispatcher, 'pipelines');
 
         foreach (['bare', 'bare', 'cors', 'produces', 'both'] as $offset => $name) {
             $index = match ($name) {
@@ -72,6 +73,7 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
                 [],
             );
             expect((string) $response->getBody())->toBe($name);
+            expect($pipelines->getValue($dispatcher))->toBe([]);
             expect($decoded->getValue($artifact))->toHaveCount(
                 match ($name) {
                     'bare' => 0,
@@ -80,6 +82,60 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
                     'both' => 3,
                 },
             );
+        }
+    } finally {
+        cleanTestCache($directory);
+    }
+});
+
+
+test('compiled route middleware still creates one reusable pipeline without retaining request state', function (): void {
+    $directory = sys_get_temp_dir() . '/webrick-compiled-middleware-' . bin2hex(random_bytes(8));
+    if (!mkdir($directory, 0700)) {
+        throw new RuntimeException('Unable to create pipeline fixture.');
+    }
+
+    try {
+        $builder = ContainerBuilder::create('webrick.pipeline.' . bin2hex(random_bytes(4)));
+        $built = new RouteCompiler()->compile(
+            register: static function (Registrar $routes): void {
+                $routes->get('/secured', static fn(Request $request): Response => Response::plaintext(
+                    (string) $request->getAttribute('nonce', ''),
+                ), [
+                    'middleware' => [static function (Request $request, Closure $next): Response {
+                        $response = $next($request);
+                        if (!$response instanceof Response) {
+                            throw new UnexpectedValueException('Pipeline must return Response.');
+                        }
+
+                        return $response->withHeader('X-Pipeline-Nonce', (string) $request->getAttribute('nonce', ''));
+                    }],
+                ]);
+            },
+            environment: 'production',
+            configFingerprint: 'pipeline-fast-path',
+            preGlobalTags: [],
+            postGlobalTags: [],
+        );
+
+        $builder->compile($directory . '/intermix.php');
+        $container = $builder->production($directory . '/intermix.php');
+        $path = $directory . '/router.php';
+        new RouterArtifactCompiler()->compile($built, $path);
+        $artifact = new RouterArtifactLoader()->load($path, 'production', 'pipeline-fast-path');
+        $dispatcher = new RuntimeDispatcher(new InterMixRuntime($container), $artifact);
+        $pipelines = new ReflectionProperty($dispatcher, 'pipelines');
+
+        foreach (['one', 'two'] as $nonce) {
+            $response = $dispatcher->dispatch(
+                0,
+                $artifact->planForIndex(0),
+                Request::fake(uri: '/secured')->withAttribute('nonce', $nonce),
+                [],
+            );
+            expect((string) $response->getBody())->toBe($nonce)
+                ->and($response->getHeaderLine('X-Pipeline-Nonce'))->toBe($nonce);
+            expect($pipelines->getValue($dispatcher))->toHaveCount(1);
         }
     } finally {
         cleanTestCache($directory);
