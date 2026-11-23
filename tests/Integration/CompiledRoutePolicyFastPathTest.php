@@ -53,8 +53,13 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
 
         $builder->compile($intermixPath);
         $container = $builder->production($intermixPath);
-        new RouterArtifactCompiler()->compile($built, $routerPath);
-        $artifact = new RouterArtifactLoader()->load($routerPath, 'production', 'policy-fast-path');
+        $compiled = new RouterArtifactCompiler()->compile($built, $routerPath);
+        $artifact = new RouterArtifactLoader()->loadPrevalidated(
+            $routerPath,
+            $compiled['fingerprint'],
+            'production',
+            'policy-fast-path',
+        );
         $dispatcher = new RuntimeDispatcher(new InterMixRuntime($container), $artifact);
         $decoded = new ReflectionProperty($artifact, 'decodedRoutes');
         $pipelines = new ReflectionProperty($dispatcher, 'pipelines');

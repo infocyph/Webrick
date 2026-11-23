@@ -17,9 +17,9 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
-    private readonly RuntimeDescriptorInvoker $resolver;
-
     private readonly bool $hasGlobalMiddleware;
+
+    private readonly RuntimeDescriptorInvoker $resolver;
 
     /** @var array<string,CompiledMiddlewarePipeline> */
     private array $pipelines = [];

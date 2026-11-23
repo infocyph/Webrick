@@ -10,6 +10,7 @@ use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
+use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
@@ -197,8 +198,10 @@ final class CompiledGlobalTagFastPathTest extends TestCase
                 releaseManifestPath: $directory . '/release.json',
                 environment: 'production',
                 configFingerprint: 'explicit-global',
+                errorHandler: new ErrorHandler(logger: new NullLogger(), debug: true),
             );
             $response = $kernel->handle(Request::fake(uri: '/explicit'));
+            self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
             expect($response->getStatusCode())->toBe(200)
                 ->and($response->getHeaderLine('X-Explicit-Pre'))->toBe('yes')
                 ->and($response->getHeaderLine('X-Explicit-Post'))->toBe('yes');
