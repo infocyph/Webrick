@@ -117,6 +117,11 @@ tenant, purpose and expiry, support revocation, and never appear in JSON.
 Configure host CORS, body limits, admission budgets and response-cache
 exclusions for authentication routes.
 
+For proxy-specific NGINX, Caddy and CDN setup, see
+:doc:`../deployments/risk-admission-edges`. Webrick's current callable
+risk-admission contract remains independent of the future Foundation
+risk-engine implementation.
+
 The host owns InterMix request-scoped policy dependencies. Do not capture a
 Request, account, tenant, mutable identity or cancellation token in a
 worker-global callback. Ordinary SAPI requires no Runwire runtime; a host

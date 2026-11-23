@@ -10,6 +10,7 @@ What’s covered
 - **Runwire** — Optional native/prefork and supported host-driver integration for persistent runtimes.
 - **Containers / K8s** — Minimal images, health checks, OPcache/FPM tips.
 - **Serverless / Edge** — Cache warm-up, streaming caveats, signed URL pass-through.
+- **Risk admission at the edge** — Trustworthy NGINX/Caddy/CDN signals and a safe no-JA4 setup.
 - **Troubleshooting** — Real-world issues and quick fixes.
 
 Golden rules
@@ -45,6 +46,7 @@ Example: Nginx front controller
    apache
    nginx-apache-fpm
    runwire
+   risk-admission-edges
    containers
    containers-and-ci
    php-fpm-tuning
