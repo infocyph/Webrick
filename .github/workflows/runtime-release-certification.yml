@@ -511,6 +511,7 @@ jobs:
       CERT_P99_PERCENT: ${{ github.event_name == 'workflow_dispatch' && inputs.p99_regression_percent || '15' }}
       CERT_MEMORY_MB: ${{ github.event_name == 'workflow_dispatch' && inputs.memory_regression_mb || '32' }}
       CERT_CANDIDATE_SHA: ${{ github.sha }}
+      CERT_COMPARISON_KIND: ${{ inputs.aa_control && 'aa' || 'ab' }}
     steps:
       - name: Check out analyzer
         uses: actions/checkout@v7
@@ -539,6 +540,7 @@ jobs:
             --summary="$PWD/cert-results/summary.md" \
             --json="$PWD/cert-results/comparison.json" \
             --profile="$CERT_MODE" --trials="$CERT_TRIALS" \
+            --comparison-kind="$CERT_COMPARISON_KIND" \
             --throughput-regression-percent="$CERT_THROUGHPUT_PERCENT" \
             --p99-regression-percent="$CERT_P99_PERCENT" \
             --memory-regression-mb="$CERT_MEMORY_MB"

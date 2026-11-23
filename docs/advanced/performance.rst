@@ -386,3 +386,44 @@ Publishing Benchmark Results
 ----------------------------
 
 Publish fixed numbers only with the Webrick commit, PHP build, OPcache/JIT settings, CPU, RAM, operating system, web server, worker configuration, concurrency, route set, matcher, middleware stack, command, duration, warm/cold state, failures and p50/p95/p99 latency. Compare median sustained successful RPM across repeated production-equivalent runs.
+
+
+HTTP certification: core execution versus contention stress
+----------------------------------------------------------
+
+The release HTTP matrix retains all 16 workloads across SAPI and Runwire
+at concurrency 1, 5, 20 and 50. It reports raw throughput, p99,
+resident memory and the paired-trial diagnostic for every case.
+Identical relative limits are not meaningful for all workloads.
+
+**Webrick core performance** includes static, dynamic, json, stream,
+upload, not_found, method_not_allowed, file, range and risk_allow.
+The last case measures the optional lightweight risk-admission middleware,
+without Redis or bcrypt. Every core comparison retains the strict
+2% throughput, 15% p99 and 32 MiB RSS regression budgets.
+
+**Contention/worker stress** includes slow, risk_counter, risk_clearance,
+risk_login, risk_login_invalid and risk_provider_slow. These simulate
+delays, Redis access or bcrypt and cannot attribute a latency delta to
+Webrick's router. The provider case is a local 5 ms sleep, Redis and
+bcrypt, **not** a live CAPTCHA provider benchmark. Every stress trial
+still needs complete valid HTTP responses, correct status, zero transport
+failures/timeouts, zero rejected requests, drained queue telemetry and
+healthy worker lifecycle. The 32 MiB RSS growth limit still applies.
+Each baseline and candidate stress trial has a hard absolute p99 ceiling
+of 8,000 ms for bcrypt/provider work or 1,600 ms for other synthetic
+contention. These are 80% of the existing 10-second and 2-second wrk
+client timeouts; they are fixture safety ceilings, **not production SLAs**.
+
+For stress, relative throughput/p99 deltas remain reported as diagnostics
+but no longer gate Webrick core engine performance. Bimodal worker
+scheduling can produce a large median-p99 ratio with identical code
+and almost identical throughput.
+
+The workflow explicitly marks comparison_kind as aa or ab. A/A compares
+separate checkouts of the same exact source SHA and admission
+implementation. Its core-budget deviations are failures of measurement
+repeatability, not source regressions. A/B is the actual release-baseline
+versus candidate comparison. All 16 cases retain every raw sample and
+all correctness, worker-safety and memory requirements before a release
+can be certified.

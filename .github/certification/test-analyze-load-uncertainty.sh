@@ -35,7 +35,9 @@ foreach ($workloads as $workload) {
                     'concurrency' => $concurrency,
                     'trial' => $trial,
                     'rps' => $rps,
-                    'p99' => 1.0,
+                    'p99' => $workload === 'risk_provider_slow' && $concurrency === 50
+                        ? ($version === 'candidate' && $trial % 2 === 1 ? 5300.0 : 2730.0)
+                        : 1.0,
                     'rss_kb' => 1024,
                     'complete' => 100,
                     'validated' => 100,
@@ -119,3 +121,113 @@ if ($checks !== []) {
 }
 echo "Offline paired interval, scenario, and hard-rejection contracts verified.\n";
 PHP
+
+
+# Mutation generator preserves all 512 rows; no test is allowed to omit load.
+make_case() {
+    CASE="$1" SOURCE="$2" TARGET="$3" php <<'PHP'
+<?php
+declare(strict_types=1);
+$lines = file((string) getenv('SOURCE'), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$out = fopen((string) getenv('TARGET'), 'wb');
+if ($lines === false || $out === false) {
+    throw new RuntimeException('Unable to build certification case.');
+}
+foreach ($lines as $line) {
+    $row = json_decode($line, true, 64, JSON_THROW_ON_ERROR);
+    $case = (string) getenv('CASE');
+    if ($case === 'remove_core_regression'
+        && $row['workload'] === 'json' && $row['concurrency'] === 5
+        && $row['version'] === 'candidate') {
+        $row['rps'] = 100.0;
+    }
+    if ($case === 'stress_ceiling'
+        && $row['workload'] === 'risk_provider_slow' && $row['concurrency'] === 50
+        && $row['version'] === 'candidate' && $row['trial'] === 1) {
+        $row['p99'] = 9000.0;
+    }
+    if ($case === 'core_p99'
+        && $row['workload'] === 'risk_allow' && $row['concurrency'] === 5
+        && $row['version'] === 'candidate') {
+        $row['p99'] = 1.30;
+    }
+    if ($case === 'stress_corrupt_response'
+        && $row['workload'] === 'risk_provider_slow' && $row['concurrency'] === 50
+        && $row['version'] === 'candidate' && $row['trial'] === 1) {
+        $row['validated'] = 99;
+        $row['invalid'] = 1;
+    }
+    fwrite($out, json_encode($row, JSON_THROW_ON_ERROR) . "\n");
+}
+fclose($out);
+PHP
+}
+
+# The historical-style bimodal provider p99 must stay VISIBLE in the report
+# without vetoing a source-identical core A/A that is otherwise clean.
+make_case remove_core_regression "$tmp/results.jsonl" "$tmp/stress-only.jsonl"
+php "$root/analyze-load.php" --input="$tmp/stress-only.jsonl" \
+    --summary="$tmp/stress.md" --json="$tmp/stress.json" \
+    --comparison-kind=aa --profile=runwire --trials=4 \
+    --throughput-regression-percent=2 --p99-regression-percent=15 \
+    --memory-regression-mb=32
+RESULT="$tmp/stress.json" php <<'PHP'
+<?php
+declare(strict_types=1);
+$report = json_decode((string) file_get_contents((string) getenv('RESULT')), true, 512, JSON_THROW_ON_ERROR);
+if ($report['errors'] !== [] || $report['comparison_kind'] !== 'aa') {
+    throw new RuntimeException('Bimodal same-source provider must pass independent core and stress safety.');
+}
+$seen = [];
+foreach ($report['comparisons'] as $row) {
+    if ($row['workload'] === 'risk_provider_slow' && $row['concurrency'] === 50) {
+        if ($row['acceptance_lane'] !== 'contention_stress'
+            || $row['p99_regression_percent'] <= 15.0
+            || $row['stress_p99_ceiling_ms'] !== 8000.0) {
+            throw new RuntimeException('Raw stress tail comparison is missing or misclassified.');
+        }
+        $seen['stress'] = true;
+    }
+    if ($row['workload'] === 'risk_allow' && $row['acceptance_lane'] === 'webrick_core') {
+        $seen['core'] = true;
+    }
+}
+if (count($seen) !== 2) {
+    throw new RuntimeException('Core and stress acceptance lanes were not represented.');
+}
+PHP
+
+make_case stress_ceiling "$tmp/stress-only.jsonl" "$tmp/stress-breach.jsonl"
+if php "$root/analyze-load.php" --input="$tmp/stress-breach.jsonl" \
+    --summary="$tmp/stress-breach.md" --json="$tmp/stress-breach.json" \
+    --comparison-kind=aa --profile=runwire --trials=4 \
+    --throughput-regression-percent=2 --p99-regression-percent=15 \
+    --memory-regression-mb=32 >"$tmp/stress-breach.log" 2>&1; then
+    echo 'Over-limit provider p99 trial passed the independent stress safety gate.' >&2
+    exit 1
+fi
+grep -q 'candidate trial 1 p99 9000.00 ms exceeds stress ceiling 8000.00 ms' "$tmp/stress-breach.log"
+
+make_case core_p99 "$tmp/stress-only.jsonl" "$tmp/core-breach.jsonl"
+if php "$root/analyze-load.php" --input="$tmp/core-breach.jsonl" \
+    --summary="$tmp/core-breach.md" --json="$tmp/core-breach.json" \
+    --comparison-kind=ab --profile=runwire --trials=4 \
+    --throughput-regression-percent=2 --p99-regression-percent=15 \
+    --memory-regression-mb=32 >"$tmp/core-breach.log" 2>&1; then
+    echo 'Webrick risk-admission core p99 regression was incorrectly accepted.' >&2
+    exit 1
+fi
+grep -q 'runwire/risk_allow/c5: p99 regression 30.00% exceeds 15.00%' "$tmp/core-breach.log"
+
+make_case stress_corrupt_response "$tmp/stress-only.jsonl" "$tmp/stress-corrupt.jsonl"
+if php "$root/analyze-load.php" --input="$tmp/stress-corrupt.jsonl" \
+    --summary="$tmp/stress-corrupt.md" --json="$tmp/stress-corrupt.json" \
+    --comparison-kind=aa --profile=runwire --trials=4 \
+    --throughput-regression-percent=2 --p99-regression-percent=15 \
+    --memory-regression-mb=32 >"$tmp/stress-corrupt.log" 2>&1; then
+    echo 'Invalid risk-provider stress response was incorrectly accepted.' >&2
+    exit 1
+fi
+grep -q 'response validation did not prove every complete response' "$tmp/stress-corrupt.log"
+
+echo 'Core regression limits, bimodal provider diagnostics, stress safety and response integrity passed.'
