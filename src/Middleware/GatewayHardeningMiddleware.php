@@ -161,6 +161,7 @@ final readonly class GatewayHardeningMiddleware
 
     /**
      * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
      */
     private function attachNetworkAttributes(Request $req, EndUser $endUser): Request
     {

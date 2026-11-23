@@ -293,8 +293,8 @@ test('gateway extracts opt-in JA4 and ASN only from a CIDR-trusted peer', functi
     ];
 
     $gateway(
-        gatewayRequest(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'])
-            ->withHeaders($headers),
+        new Request('GET', new Uri('http://origin.example/resource'),
+            ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'], $headers),
         static function (Request $request): Response {
             expect($request->getAttribute('client_ip'))->toBe('203.0.113.42')
                 ->and($request->getAttribute('is_trusted_proxy'))->toBeTrue()
@@ -306,8 +306,8 @@ test('gateway extracts opt-in JA4 and ASN only from a CIDR-trusted peer', functi
     );
 
     $gateway(
-        gatewayRequest(['REMOTE_ADDR' => '203.0.113.9', 'HTTP_HOST' => 'origin.example'])
-            ->withHeaders($headers),
+        new Request('GET', new Uri('http://origin.example/resource'),
+            ['REMOTE_ADDR' => '203.0.113.9', 'HTTP_HOST' => 'origin.example'], $headers),
         static function (Request $request): Response {
             expect($request->getAttribute('client_ip'))->toBe('203.0.113.9')
                 ->and($request->getAttribute('is_trusted_proxy'))->toBeFalse()
@@ -346,8 +346,8 @@ test('gateway rejects malformed trusted risk signals before the handler', functi
     $calls = 0;
 
     expect(fn() => $gateway(
-        gatewayRequest(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'])
-            ->withHeaders($headers),
+        new Request('GET', new Uri('http://origin.example/resource'),
+            ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'], $headers),
         static function () use (&$calls): Response {
             ++$calls;
 

@@ -161,7 +161,7 @@ trust levels; these belong to the host (later, opt-in Foundation).
 App-side admission and storage safety
 -------------------------------------
 
-Register :class:`Infocyph.Webrick.Middleware.RiskAdmissionMiddleware`
+Register ``RiskAdmissionMiddleware``
 only on the host's protected routes (see
 :doc:`../middleware/risk-admission`). The evaluator returns a
 `RiskDecision`; `allow` continues to the handler, `challenge` returns
