@@ -42,6 +42,9 @@ final class UAParser
 
     private string $ua;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(Request|string|null $source = null)
     {
         if ($source instanceof Request) {
@@ -123,7 +126,7 @@ final class UAParser
 
     private function extractVersion(string $token): string
     {
-        /** @var array<string,string> $patterns */
+        /** @var array<string,non-empty-string> $patterns */
         static $patterns = [
             'crios' => '/crios\/([\d.]+)/i',
             'fxios' => '/fxios\/([\d.]+)/i',
@@ -165,7 +168,10 @@ final class UAParser
         return $brands;
     }
 
-    /** @phpstan-return HintMap */
+    /**
+     * @phpstan-return HintMap
+     * @throws \InvalidArgumentException
+     */
     private function parseSecCh(Request $req): array
     {
         $hint = [];
@@ -225,7 +231,7 @@ final class UAParser
             return 'macOS ' . str_replace('_', '.', $matches[1]);
         }
 
-        /** @var array<string,string> $patterns */
+        /** @var array<non-empty-string,string> $patterns */
         $patterns = [
             '/Windows NT 10\.0.*Windows[\/\s]?11/i' => 'Windows 11',
             '/Windows NT 10\.0/i' => 'Windows 10',

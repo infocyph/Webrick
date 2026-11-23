@@ -41,6 +41,7 @@ final readonly class SignedUrlConfig
     /**
      * @param array<array-key,mixed> $ignoredQueryParams
      * @param array<array-key,mixed> $verificationKeys
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         #[\SensitiveParameter]
@@ -74,7 +75,10 @@ final readonly class SignedUrlConfig
         );
     }
 
-    /** @param array<int|string,mixed> $config */
+    /**
+     * @param array<int|string,mixed> $config
+     * @throws \InvalidArgumentException
+     */
     public static function fromArray(#[\SensitiveParameter] array $config): self
     {
         $verificationKeys = $config['verificationKeys'] ?? [];
@@ -108,6 +112,9 @@ final readonly class SignedUrlConfig
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function mergeLegacy(#[\SensitiveParameter] ?self $config, #[\SensitiveParameter] ?string $generationKey = null, ?int $defaultTtl = null): ?self
     {
         if ($config === null && $generationKey === null && $defaultTtl === null) {
@@ -145,6 +152,9 @@ final readonly class SignedUrlConfig
         return $filtered;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeAlgorithm(string $algorithm): string
     {
         $algorithm = \trim(\strtolower($algorithm));
@@ -182,6 +192,9 @@ final readonly class SignedUrlConfig
         return \array_values($normalized);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeLeeway(int $leeway): int
     {
         if ($leeway < 0) {
@@ -191,6 +204,9 @@ final readonly class SignedUrlConfig
         return $leeway;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeNullablePositiveInt(?int $value, string $field): ?int
     {
         if ($value === null) {
@@ -203,6 +219,9 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeNullableString(#[\SensitiveParameter] ?string $value, string $field): ?string
     {
         if ($value === null) {
@@ -217,6 +236,9 @@ final readonly class SignedUrlConfig
         return $value;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeOptionalInt(mixed $value, string $field): ?int
     {
         if ($value === null) {
@@ -234,9 +256,12 @@ final readonly class SignedUrlConfig
             throw new InvalidArgumentException("{$field} is outside the supported integer range.");
         }
 
-        return (int) $parsed;
+        return $parsed;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeParamName(string $param, string $field): string
     {
         $param = \trim($param);
@@ -247,6 +272,9 @@ final readonly class SignedUrlConfig
         return $param;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizePayloadMode(string $payloadMode): string
     {
         $payloadMode = \strtolower(\trim($payloadMode));

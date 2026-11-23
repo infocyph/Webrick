@@ -27,6 +27,7 @@ final class MethodNotAllowedException extends HttpException
      * @param string $path The requested path (e.g., "/users/1").
      * @param array<int,string> $allowed List of allowed HTTP verbs for the path.
      * @param \Throwable|null $previous Optional previous throwable for chaining.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public readonly string $verb,

@@ -41,16 +41,19 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
 
     public function __construct(private readonly string $body) {}
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->body) - $this->offset;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->offset >= strlen($this->body);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         if (!$this->eof()) {
@@ -60,6 +63,7 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -67,6 +71,10 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         ++$this->readCalls;
@@ -83,12 +91,14 @@ final class RunwireHttp1BodyFixture implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return strlen($this->body);
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -118,6 +128,7 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -134,21 +145,27 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
-    public function onDrain(callable $_callback): ResponseWriterInterface
+    #[\Override]
+    public function onDrain(callable $callback): ResponseWriterInterface
     {
+        unset($callback);
+
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         if ($this->ended) {
@@ -166,6 +183,7 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         if ($this->ended) {
@@ -183,6 +201,13 @@ final class RunwireHttp1WriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireHttp1ParityTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testHttp11ParityThroughTheFullRunwireApplicationBridge(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -266,7 +291,11 @@ final class RunwireHttp1ParityTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -322,7 +351,7 @@ final class RunwireHttp1ParityTest extends TestCase
             ): Response => Response::create(
                 'error:' . $status . ':' . $request->getUri()->getPath() . ':' . $error->getMessage(),
                 $status,
-                $headers,
+                \webrickTestHeaders($headers),
             ),
         );
 
@@ -371,7 +400,10 @@ final class RunwireHttp1ParityTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -385,6 +417,8 @@ final class RunwireHttp1ParityTest extends TestCase
 
     /**
      * @param array<string,string|list<string>>|null $headers
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     private static function request(
         string $method = 'GET',
@@ -405,6 +439,10 @@ final class RunwireHttp1ParityTest extends TestCase
         );
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \Throwable
+     */
     private static function dispatch(
         RunwireRuntimeApplication $application,
         HttpRequest $request,

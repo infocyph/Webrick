@@ -15,6 +15,7 @@ use Infocyph\Webrick\Runtime\Http\WorkermanRuntimeAdapter;
 /**
  * @param class-string $responseClass
  * @param class-string $chunkClass
+ * @throws \RuntimeException
  */
 function runtime_adapter_workerman(
     string $responseClass = \stdClass::class,
@@ -39,6 +40,9 @@ function runtime_adapter_workerman(
     return $adapter;
 }
 
+/**
+ * @throws \InvalidArgumentException
+ */
 function runtime_adapter_context(string $method = 'GET'): RuntimeRequestContext
 {
     return new RuntimeRequestContext(

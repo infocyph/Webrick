@@ -22,6 +22,7 @@ require_once __DIR__ . '/registrar_functions.php';
 /**
  * Fluent route registrar.
  *
+ * @api
  * @phpstan-type MiddlewareEntry string|object
  * @phpstan-type RawMiddlewareEntry string|object
  * @phpstan-type RawMiddlewareList list<RawMiddlewareEntry>
@@ -33,27 +34,42 @@ require_once __DIR__ . '/registrar_functions.php';
  * @phpstan-type AliasSpec array{__alias:true,key:non-empty-string,params:list<string>}
  * @phpstan-type ResourceSpecRow array{0:string,1:string,2:string,3:string,4:bool}
  * @phpstan-type GroupInput array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
- * @method RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @psalm-type MiddlewareEntry = string|object
+ * @psalm-type RawMiddlewareEntry = string|object
+ * @psalm-type RawMiddlewareList = list<RawMiddlewareEntry>
+ * @psalm-type MiddlewareList = list<MiddlewareEntry>
+ * @psalm-type HandlerArray = array{0:string|object,1:string}
+ * @psalm-type RouteHandler = HandlerArray|string|callable
+ * @psalm-type RouteAttributes = array{produces?:Produces,cors?:Cors}
+ * @psalm-type RouteOptions = array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}
+ * @psalm-type AliasSpec = array{__alias:true,key:non-empty-string,params:list<string>}
+ * @psalm-type ResourceSpecRow = array{0:string,1:string,2:string,3:string,4:bool}
+ * @psalm-type GroupInput = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
+ * @method RouteInterface delete(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface get(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface head(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface options(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface patch(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface post(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method RouteInterface put(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
  */
 final readonly class Registrar
 {
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function __construct(
         private Collection $routes,
         private GroupScope $scope = new GroupScope(),
         private bool $autoSlashRedirect = false,
-        private bool $exposeUrlServices = false,
+        bool $exposeUrlServices = false,
         private ?string $signKey = null,
         private ?int $signedDefaultTtl = null,
         private ?SignedUrlConfig $signedUrlConfig = null,
         private string $urlBaseUri = '',
     ) {
-        if ($this->exposeUrlServices) {
+        if ($exposeUrlServices) {
             Router::bindUrlServices(
                 $this->routes,
                 $this->signKey,
@@ -64,7 +80,12 @@ final readonly class Registrar
         }
     }
 
-    /** @param array{0:mixed,1:mixed,2?:mixed} $args */
+    /**
+     * @param array{0:mixed,1:mixed,2?:mixed} $args
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function __call(string $method, array $args): mixed
     {
         $verb = HttpMethodEnum::tryFrom(strtoupper($method));
@@ -86,6 +107,8 @@ final readonly class Registrar
      * @param string|GroupInput|null $prefix
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function group(
         array|string|null $prefix = null,
@@ -149,6 +172,7 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @throws \LogicException
      */
     private function add(
         string $verb,
@@ -261,6 +285,9 @@ final readonly class Registrar
         return new Route($verb, $fullPath, $handler);
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function maybeRegisterSlashVariant(string $verb, string $fullPath): void
     {
         if (!$this->autoSlashRedirect || $verb !== HttpMethodEnum::GET->value || str_contains($fullPath, '{')) {
@@ -292,6 +319,7 @@ final readonly class Registrar
      * @param string|GroupInput|Closure|null $domain
      * @param list<mixed>|Closure $middleware
      * @return array{0:?string,1:?string,2:RawMiddlewareList,3:?string,4:Closure}
+     * @throws \InvalidArgumentException
      */
     private function normalizeGroupInputs(
         array|string|null $prefix,
@@ -315,6 +343,7 @@ final readonly class Registrar
     /**
      * @param array{0:mixed,1:mixed,2?:mixed} $args
      * @return array{0:string,1:RouteHandler,2:string|RouteOptions|null}
+     * @throws \InvalidArgumentException
      */
     private function normalizeVerbCallArgs(string $method, array $args): array
     {
@@ -352,7 +381,10 @@ final readonly class Registrar
         return registrar_parse_resource_options($opts);
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     private function registerRouteAndAliases(Route $route, array $aliases): void
     {
         $this->routes->addWithAliases($route, $aliases);
@@ -370,6 +402,7 @@ final readonly class Registrar
     /**
      * @param RouteHandler $handler
      * @param string|RouteOptions|null $nameOrOpts
+     * @throws \LogicException
      */
     private function verb(
         HttpMethodEnum $method,

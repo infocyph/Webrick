@@ -16,7 +16,11 @@ use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 use RuntimeException;
 
-/** Native Webrick request surface with explicit structured-payload parse states. */
+/**
+ * Native Webrick request surface with explicit structured-payload parse states.
+ *
+ * @api
+ */
 class NativeServerRequest extends ServerRequest
 {
     private mixed $jsonPayload = null;
@@ -27,12 +31,18 @@ class NativeServerRequest extends ServerRequest
 
     private ?PayloadParseState $xmlState = null;
 
-    protected function __clone(): void
+    #[\Override]
+    protected function __clone()
     {
         parent::__clone();
         $this->resetPayloadCaches();
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
@@ -83,6 +93,9 @@ class NativeServerRequest extends ServerRequest
             : PayloadParseState::NOT_APPLICABLE);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function parsedJson(?string $key = null): mixed
     {
         $this->parseJson();
@@ -96,6 +109,9 @@ class NativeServerRequest extends ServerRequest
         return self::valueFromPayload($this->jsonPayload, $key);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function parsedXml(?string $key = null): mixed
     {
         $this->parseXml();
@@ -128,8 +144,9 @@ class NativeServerRequest extends ServerRequest
     }
 
     /**
-     * @param array<string,mixed>|object|null $data
+     * @param array<array-key,mixed>|object|null $data
      */
+    #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
         return parent::withParsedBody($data);
@@ -158,7 +175,10 @@ class NativeServerRequest extends ServerRequest
         return $map;
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function uriFromServerParams(array $server): Uri
     {
         $scheme = UriServerParams::detectScheme($server);
@@ -193,16 +213,23 @@ class NativeServerRequest extends ServerRequest
         return is_array($payload) ? ($payload[$key] ?? null) : null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isJsonContentType(): bool
     {
         return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isXmlContentType(): bool
     {
         return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));
     }
 
+    /** @throws \InvalidArgumentException */
     private function parseJson(): void
     {
         if ($this->jsonState !== null) {
@@ -223,6 +250,7 @@ class NativeServerRequest extends ServerRequest
         }
     }
 
+    /** @throws \InvalidArgumentException */
     private function parseXml(): void
     {
         if ($this->xmlState !== null) {

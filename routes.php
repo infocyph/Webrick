@@ -73,11 +73,11 @@ Route::get('/', function (): Response {
 
 /* ---- simple routes ---- */
 Route::get('/ping', fn() => 'pong', 'ping');
-Route::get('/hello/{name}', fn($name): Response => Response::json(['hello' => $name]));
+Route::get('/hello/{name}', fn(string $name): Response => Response::json(['hello' => $name]));
 Route::get('/json', fn() => Response::json(['memory' => memory_get_usage(true)]), 'json');
 Route::get('/redirect', fn() => Response::redirect('/', StatusEnum::FOUND->value));
 Route::get('/download', fn(Request $r) => Response::rangedDownload($r, __FILE__, 'index.php'));
-Route::get('/color/{color:hex}', fn($hex): Response => Response::json(['you sent hex' => $hex]));
+Route::get('/color/{color:hex}', fn(string $hex): Response => Response::json(['you sent hex' => $hex]));
 
 /* ---- class-based routes ---- */
 Route::get('/class/test/{name}', [DemoController::class, 'hello'], 'test');
@@ -86,7 +86,7 @@ Route::get('/plus/{name}/mine', [DemoController::class, 'hello']);
 
 /* ---- extra variety routes ---- */
 Route::post('/post/echo', fn(Request $r): Response => Response::json(['method' => $r->getMethod(), 'payload' => $r->all(), 'time' => \date(DATE_ATOM)]));
-Route::put('/user/{id:int}', fn(Request $r, $id): Response => Response::json(['updated' => $id, 'input' => $r->all()]));
+Route::put('/user/{id:int}', fn(Request $r, string $id): Response => Response::json(['updated' => $id, 'input' => $r->all()]));
 Route::get('/stream', fn(): Response => Response::stream(function () {
     for ($i = 1; $i <= 10; $i++) {
         yield "chunk {$i}\n";
@@ -109,6 +109,7 @@ Route::get('/xml-demo', fn() => Response::create(
 Route::get('/status/{code}', fn(string $code): Response => Response::plaintext("Status: $code", (int) $code));
 Route::get('/json/slow', fn(): Response => Response::json(new class implements JsonSerializable {
     /** @return array{now:int,items:list<array{n:int,v:string}>} */
+    #[\Override]
     public function jsonSerialize(): array
     {
         return [
@@ -150,7 +151,7 @@ Route::get('/api/error-demo', static function (): Response {
     throw HttpException::forbidden('API token missing');
 });
 
-Route::get('/make-signed/{id:int}', function ($id) {
+Route::get('/make-signed/{id:int}', function (string $id) {
     $signed = Route::temporaryUrlFor(
         name: 'secure.show',
         params: ['id' => $id],
@@ -164,7 +165,7 @@ Route::get('/make-signed/{id:int}', function ($id) {
     'middleware' => ['throttle:2,1'],
 ]);
 
-Route::get('/make-signed-absolute/{id:int}', function ($id) {
+Route::get('/make-signed-absolute/{id:int}', function (string $id) {
     $signed = Route::temporaryUrlUntil(
         name: 'secure.absolute',
         expiresAt: new \DateTimeImmutable('+5 minutes'),
@@ -180,11 +181,11 @@ Route::get('/make-signed-absolute/{id:int}', function ($id) {
     'middleware' => ['throttle:2,1'],
 ]);
 
-Route::get('/secure/{id:int}', fn($id): Response => Response::json(['ok' => true, 'id' => $id, 'time' => \date(DATE_ATOM)]), [
+Route::get('/secure/{id:int}', fn(string $id): Response => Response::json(['ok' => true, 'id' => $id, 'time' => \date(DATE_ATOM)]), [
     'as' => 'secure.show',
     'middleware' => ['verifySignedUrl', 'throttle:2,1'],
 ]);
-Route::get('/secure-absolute/{id:int}', fn(Request $r, $id): Response => Response::json([
+Route::get('/secure-absolute/{id:int}', fn(Request $r, string $id): Response => Response::json([
     'ok' => true,
     'id' => $id,
     'preview' => $r->getQueryParams()['preview'] ?? null,
@@ -218,7 +219,7 @@ Route::group(
     namePrefix: 'blog.',
     callback: function (Registrar $blog): void {
         $blog->get('/', fn() => Response::json(['section' => 'blog', 'action' => 'index']));
-        Route::get('/{slug}', fn($slug) => Response::json(['section' => 'blog', 'slug' => $slug]), 'show');
+        Route::get('/{slug}', fn(string $slug) => Response::json(['section' => 'blog', 'slug' => $slug]), 'show');
     },
 );
 Route::group(

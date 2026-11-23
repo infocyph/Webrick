@@ -26,6 +26,7 @@ final class MiddlewareAliases
     /**
      * Build-plane alias parsing. Runtime-backed aliases are represented without
      * executing their resolver so construction stays inside the request scope.
+     * @throws \InvalidArgumentException
      */
     public static function compileString(string $maybeAlias): RuntimeMiddlewareDescriptor|string
     {
@@ -64,6 +65,10 @@ final class MiddlewareAliases
         return array_any(self::$resolvers, static fn(array $resolver): bool => ($resolver['supports'])($alias));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function register(string $alias, callable|string $factoryOrClass): void
     {
         self::assertMutable();
@@ -78,6 +83,7 @@ final class MiddlewareAliases
     /**
      * @param callable(string):bool $supports
      * @param callable(string,string...):(callable|object|string) $resolve
+     * @throws \LogicException
      */
     public static function registerResolver(callable $supports, callable $resolve, ?string $name = null): void
     {
@@ -92,6 +98,9 @@ final class MiddlewareAliases
         self::$resolvers[] = $resolver;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function reset(): void
     {
         self::assertMutable();
@@ -99,6 +108,9 @@ final class MiddlewareAliases
         self::$resolvers = [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public static function resolveString(string $maybeAlias): callable|object|string
     {
         [$key, $params] = self::parse($maybeAlias);
@@ -116,6 +128,9 @@ final class MiddlewareAliases
         return $maybeAlias;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function assertMutable(): void
     {
         if (self::$frozen) {
@@ -123,6 +138,9 @@ final class MiddlewareAliases
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function assertResolved(mixed $resolved, string $alias): callable|object|string
     {
         if (is_string($resolved) || is_object($resolved) || is_callable($resolved)) {
@@ -138,6 +156,7 @@ final class MiddlewareAliases
 
     /**
      * @param list<string> $params
+     * @throws \InvalidArgumentException
      */
     private static function compileRegistered(callable|string $registered, array $params): RuntimeMiddlewareDescriptor|string
     {
@@ -153,8 +172,10 @@ final class MiddlewareAliases
      */
     private static function parse(string $maybeAlias): array
     {
-        [$name, $paramStr] = explode(':', $maybeAlias, 2) + [1 => null];
-        $key = strtolower(trim((string) $name));
+        $separator = strpos($maybeAlias, ':');
+        $name = $separator === false ? $maybeAlias : substr($maybeAlias, 0, $separator);
+        $paramStr = $separator === false ? null : substr($maybeAlias, $separator + 1);
+        $key = strtolower(trim($name));
         $params = $paramStr !== null && $paramStr !== ''
             ? array_map(trim(...), explode(',', $paramStr))
             : [];
@@ -164,10 +185,14 @@ final class MiddlewareAliases
 
     /**
      * @param list<string> $params
+     * @throws \UnexpectedValueException
      */
     private static function resolveRegistered(callable|string $registered, array $params): callable|object|string
     {
         if (is_string($registered)) {
+            if ($params !== [] && !class_exists($registered)) {
+                throw new UnexpectedValueException(sprintf('Middleware class "%s" is not available.', $registered));
+            }
             $resolved = $params !== [] ? new $registered(...$params) : $registered;
 
             return self::assertResolved($resolved, $registered);

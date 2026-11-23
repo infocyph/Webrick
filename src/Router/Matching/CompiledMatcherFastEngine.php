@@ -37,6 +37,7 @@ final readonly class CompiledMatcherFastEngine
      * @param list<MatcherGroup> $hostGroups
      * @param list<MatcherGroup> $wildcardGroups
      * @return CompiledMatch
+     * @throws \RuntimeException
      */
     public function match(array $hostGroups, array $wildcardGroups, string $method, string $path): int|array|MatchOutcome
     {
@@ -74,6 +75,7 @@ final readonly class CompiledMatcherFastEngine
      * @param MatcherGroup|null $hostGroup
      * @param MatcherGroup|null $wildcardGroup
      * @return CompiledMatch
+     * @throws \RuntimeException
      */
     public function matchSingle(
         ?array $hostGroup,
@@ -231,6 +233,8 @@ final readonly class CompiledMatcherFastEngine
      * @param MatcherGroup|null $hostGroup
      * @param MatcherGroup|null $wildcardGroup
      * @return int|array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function matchSingleDynamic(
         ?array $hostGroup,

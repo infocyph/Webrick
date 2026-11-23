@@ -10,6 +10,16 @@ use Infocyph\Webrick\Request\Core\Uri;
 use Infocyph\Webrick\Request\Request;
 
 describe('Request', function () {
+    it('preserves canonical paths and normalizes noncanonical segments', function () {
+        expect(Uri::normalizePath('/articles/latest/'))->toBe('/articles/latest/')
+            ->and(Uri::normalizePath('/articles/%2e%2e/next'))->toBe('/articles/%2e%2e/next')
+            ->and(Uri::normalizePath('/articles//latest'))->toBe('/articles/latest')
+            ->and(Uri::normalizePath('/articles/./latest/../'))->toBe('/articles/')
+            ->and(Uri::normalizePath('/.well-known/key'))->toBe('/.well-known/key')
+            ->and(Uri::normalizePath('../articles/../latest'))->toBe('../latest')
+            ->and(Uri::normalizePath(''))->toBe('/');
+    });
+
     it('creates from globals', function () {
         $_SERVER = [
             'REQUEST_METHOD' => 'GET',
@@ -19,11 +29,9 @@ describe('Request', function () {
 
         $request = Request::fromGlobals();
 
-        expect($request)
-            ->toBeInstanceOf(Request::class)
-            ->getMethod()->toBe('GET')
-            ->getUri()->getPath()->toBe('/test')
-            ->getUri()->getHost()->toBe('example.com');
+        expect($request->getMethod())->toBe('GET')
+            ->and($request->getUri()->getPath())->toBe('/test')
+            ->and($request->getUri()->getHost())->toBe('example.com');
     });
 
     it('can be created with factory methods', function () {
@@ -76,9 +84,10 @@ describe('Request', function () {
         $request = Request::fake(query: ['query_key' => 'first'])
             ->withQueryParams(['query_key' => 'second']);
 
+        /** @var Request&object{query_key:string} $request */
         expect($request->query_key)->toBe('second')
             ->and(isset($request->query_key))->toBeTrue()
-            ->and(isset($request->missing_key))->toBeFalse();
+            ->and($request->__isset('missing_key'))->toBeFalse();
     });
 
     it('preserves zero-like URI components and request targets', function () {
@@ -106,48 +115,58 @@ describe('Request', function () {
                 return '';
             }
 
+            #[\Override]
             public function close(): void {}
 
+            #[\Override]
             public function detach(): mixed
             {
                 return null;
             }
 
+            #[\Override]
             public function eof(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function getContents(): string
             {
                 return '';
             }
 
+            #[\Override]
             public function getMetadata(?string $key = null): mixed
             {
                 return $key === null ? [] : null;
             }
 
+            #[\Override]
             public function getSize(): ?int
             {
                 return null;
             }
 
+            #[\Override]
             public function isReadable(): bool
             {
                 return true;
             }
 
+            #[\Override]
             public function isSeekable(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function isWritable(): bool
             {
                 return false;
             }
 
+            #[\Override]
             public function read(int $length): string
             {
                 unset($length);
@@ -155,18 +174,22 @@ describe('Request', function () {
                 return '';
             }
 
+            #[\Override]
             public function rewind(): void {}
 
+            #[\Override]
             public function seek(int $offset, int $whence = SEEK_SET): void
             {
                 unset($offset, $whence);
             }
 
+            #[\Override]
             public function tell(): int
             {
                 return 0;
             }
 
+            #[\Override]
             public function write(string $string): int
             {
                 unset($string);
@@ -191,7 +214,7 @@ describe('Request', function () {
                 ->toThrow(RuntimeException::class)
                 ->and(is_file($missingTarget))->toBeFalse();
         } finally {
-            if (is_string($target) && is_file($target) && !unlink($target)) {
+            if (is_file($target) && !unlink($target)) {
                 throw new RuntimeException("Unable to remove upload target fixture: {$target}");
             }
             if (isset($missingTarget) && is_file($missingTarget) && !unlink($missingTarget)) {
@@ -213,7 +236,7 @@ describe('Request', function () {
                 ->and(fn() => $upload->getStream())
                 ->toThrow(RuntimeException::class, 'Uploaded file has been moved');
         } finally {
-            if (is_string($target) && is_file($target) && !unlink($target)) {
+            if (is_file($target) && !unlink($target)) {
                 throw new RuntimeException("Unable to remove upload target fixture: {$target}");
             }
         }
@@ -240,7 +263,7 @@ describe('Request', function () {
                 ->and($request->getUploadedFiles()['document'] ?? null)->toBeInstanceOf(UploadedFile::class)
                 ->and($hydrated->getValue($request))->toBeArray();
         } finally {
-            if (is_string($temporary) && is_file($temporary) && !unlink($temporary)) {
+            if (is_file($temporary) && !unlink($temporary)) {
                 throw new RuntimeException("Unable to remove temporary upload fixture: {$temporary}");
             }
         }
@@ -270,7 +293,7 @@ describe('Request', function () {
         expect($request->getParsedBody())
             ->toBe(['name' => 'John', 'age' => '30'])
             ->and($request->input('name'))->toBe('John')
-            ->and((int) $request->input('age'))->toBe(30);
+            ->and($request->input('age'))->toBe('30');
     });
 
     it('handles JSON body', function () {

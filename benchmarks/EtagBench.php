@@ -16,11 +16,23 @@ final class EtagBench
 {
     private Stream $stream;
 
+    /**
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
+
+    /**
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->stream = new Stream(str_repeat('a', 65_536));
     }
 
+    /** @param array{algorithm:string} $params */
     #[Bench\BeforeMethods('setUp')]
     #[Bench\ParamProviders('provideAlgorithms')]
     public function benchHashStream(array $params): void

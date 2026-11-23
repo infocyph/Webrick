@@ -50,6 +50,7 @@ final readonly class SwooleNativeRequest
         return is_string($protocol) && str_starts_with(strtoupper($protocol), 'HTTP/2');
     }
 
+    /** @throws \RuntimeException */
     public static function rawBody(object $request): string
     {
         $body = self::call($request, 'rawContent');
@@ -93,6 +94,9 @@ final readonly class SwooleNativeRequest
         return $server;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function call(object $target, string $method): mixed
     {
         if (!method_exists($target, $method)) {

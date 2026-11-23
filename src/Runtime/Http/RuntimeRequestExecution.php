@@ -26,6 +26,7 @@ final readonly class RuntimeRequestExecution
     /**
      * @param null|callable():bool $cancelled
      * @param null|callable():?string $cancellationReason
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public ?string $requestId = null,
@@ -55,6 +56,9 @@ final readonly class RuntimeRequestExecution
         $this->cancellationReason = $cancellationReason === null ? null : Closure::fromCallable($cancellationReason);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function cancellationReason(): ?string
     {
         if ($this->cancellationReason === null) {

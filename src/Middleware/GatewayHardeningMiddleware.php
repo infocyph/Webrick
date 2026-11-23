@@ -45,6 +45,7 @@ final readonly class GatewayHardeningMiddleware
      * @param list<string> $trustedHosts
      * @param list<string> $redirectAllowedHosts
      * @param list<string> $trustedClientIpHeaders
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         array $trustedProxyCidrs = [],
@@ -56,7 +57,14 @@ final readonly class GatewayHardeningMiddleware
         private bool $stripHopByHop = true,
         private array $redirectAllowedHosts = [],
         private array $trustedClientIpHeaders = [],
+        private ?string $trustedJa4Header = null,
+        private ?string $trustedAsnHeader = null,
     ) {
+        foreach ([$this->trustedJa4Header, $this->trustedAsnHeader] as $name) {
+            if ($name !== null && (strlen($name) > 64 || preg_match('/^[A-Za-z0-9-]+$/D', $name) !== 1)) {
+                throw new \InvalidArgumentException('Trusted risk header names must be valid HTTP field names.');
+            }
+        }
         if ($httpsPort < 1 || $httpsPort > 65535) {
             throw new \InvalidArgumentException('httpsPort must be between 1 and 65535.');
         }
@@ -67,7 +75,12 @@ final readonly class GatewayHardeningMiddleware
         $this->denyIpNetworks = self::compileNetworks($denyIpCidrs);
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $req = $this->normalizeProxyContext($req);
@@ -102,6 +115,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @param list<string> $trustedHosts
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function compileHostRegex(array $trustedHosts): array
     {
@@ -124,6 +138,7 @@ final readonly class GatewayHardeningMiddleware
     /**
      * @param list<string> $cidrs
      * @return list<IpCidr>
+     * @throws \InvalidArgumentException
      */
     private static function compileNetworks(array $cidrs): array
     {
@@ -144,15 +159,23 @@ final readonly class GatewayHardeningMiddleware
         return strcasecmp($a, $b) === 0;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function attachNetworkAttributes(Request $req, EndUser $endUser): Request
     {
         $clientIp = $endUser->ip();
         $peerIp = $endUser->ipNoProxy();
 
+        $trusted = $this->cidrHit($peerIp, $this->trustedProxyNetworks);
+
         return $req->withAttributes([
             'client_ip' => $clientIp,
             'peer_ip' => $peerIp,
-            'is_trusted_proxy' => $this->cidrHit($peerIp, $this->trustedProxyNetworks),
+            'is_trusted_proxy' => $trusted,
+            'risk_verified_ja4' => $trusted ? $this->trustedJa4($req) : null,
+            'risk_verified_asn' => $trusted ? $this->trustedAsn($req) : null,
             'effective_scheme' => $req->getUri()->getScheme(),
             'effective_host' => $req->getUri()->getHost(),
             'effective_port' => $req->getUri()->getPort(),
@@ -166,6 +189,10 @@ final readonly class GatewayHardeningMiddleware
             && array_any($networks, static fn(IpCidr $network): bool => $network->matches($ip));
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     private function denyIfBlockedEndUser(EndUser $endUser): void
     {
         $clientIp = $endUser->ip();
@@ -174,6 +201,10 @@ final readonly class GatewayHardeningMiddleware
         }
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     private function guardRedirects(Request $req, Response $response): Response
     {
         if (!$response->hasHeader('Location')) {
@@ -192,9 +223,12 @@ final readonly class GatewayHardeningMiddleware
 
     private function matchesHost(string $host): bool
     {
-        return array_any($this->hostRegex, static fn(string $regex): bool => preg_match($regex, $host) === 1);
+        return array_any($this->hostRegex, static fn(string $regex): bool => $regex !== '' && preg_match($regex, $host) === 1);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeProxyContext(Request $req): Request
     {
         $peer = $req->getServerParams()['REMOTE_ADDR'] ?? null;
@@ -223,7 +257,10 @@ final readonly class GatewayHardeningMiddleware
         return $out;
     }
 
-    /** @return array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string} */
+    /**
+     * @return array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string}
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function parseRedirectTarget(string $location): array
     {
         if ($location === ''
@@ -275,6 +312,11 @@ final readonly class GatewayHardeningMiddleware
             && self::equalsIgnoreCase($targetHost, $requestHost);
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function redirectIfHttpsEnforced(Request $req): ?Response
     {
         if (!$this->enforceHttps || $req->getUri()->getScheme() === 'https') {
@@ -292,6 +334,9 @@ final readonly class GatewayHardeningMiddleware
         return Response::redirect((string) $target, 308);
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function rejectIfUntrustedHost(Request $req): void
     {
         if ($this->allowAllHosts || $this->trustedHosts === []) {
@@ -307,6 +352,9 @@ final readonly class GatewayHardeningMiddleware
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function stripHopByHopFromRequest(Request $request): Request
     {
         $tokens = $this->parseConnectionTokens($request->getHeaderLine('Connection'));
@@ -319,6 +367,9 @@ final readonly class GatewayHardeningMiddleware
         return $request;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function stripHopByHopFromResponse(Response $response): Response
     {
         $tokens = $this->parseConnectionTokens($response->getHeaderLine('Connection'));
@@ -329,5 +380,77 @@ final readonly class GatewayHardeningMiddleware
         }
 
         return $response;
+    }
+
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedAsn(Request $request): ?int
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedAsnHeader);
+        if ($value === null) {
+            return null;
+        }
+        if (preg_match('/^(?:AS)?([1-9][0-9]{0,9})$/D', $value, $matches) !== 1
+            || (int) $matches[1] > 4_294_967_295
+        ) {
+            throw HttpException::badRequest('Malformed verified ASN signal.');
+        }
+
+        return (int) $matches[1];
+    }
+
+    /**
+     * Only an explicitly configured, CIDR-trusted edge can attest a fingerprint.
+     * A missing header is not a failed JA4 classification.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedJa4(Request $request): ?string
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedJa4Header);
+        if ($value === null) {
+            return null;
+        }
+        if (strlen($value) > 128 || preg_match('/^[a-z0-9_]{15,128}$/D', $value) !== 1) {
+            throw HttpException::badRequest('Malformed verified JA4 signal.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Explicitly reject ambiguous/multiple values from a trusted hop.
+     * The edge must overwrite client-supplied headers, never append to them.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedRiskHeader(Request $request, ?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        $values = $request->getHeader($name);
+        if ($values === []) {
+            return null;
+        }
+
+        if (count($values) !== 1) {
+            throw HttpException::badRequest('Ambiguous verified risk signal.');
+        }
+
+        $value = $values[0];
+        if ($value === '') {
+            return null;
+        }
+        if (strlen($value) > 128 || str_contains($value, ',') || trim($value) !== $value) {
+            throw HttpException::badRequest('Malformed verified risk signal.');
+        }
+
+        return $value;
     }
 }

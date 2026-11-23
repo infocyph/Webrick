@@ -124,7 +124,7 @@ enum MediaTypeEnum: string
     {
         $parts = explode(';', $this->value, 2);
 
-        return strtolower(trim($parts[0]));
+        return trim($parts[0]);
     }
 
     public function charset(): ?string

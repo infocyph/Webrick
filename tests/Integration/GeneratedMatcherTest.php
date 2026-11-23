@@ -26,6 +26,7 @@ dataset('cached matcher modes', [
 
 final class CachedClassHandlerFixture
 {
+    /** @return array{ok: true} */
     public static function handle(): array
     {
         return ['ok' => true];
@@ -36,6 +37,7 @@ final class CachedLateStaticHandlerFixture extends CachedStaticHandlerBaseFixtur
 
 class CachedStaticHandlerBaseFixture
 {
+    /** @return array{class:class-string} */
     public static function identify(): array
     {
         return ['class' => static::class];
@@ -44,6 +46,7 @@ class CachedStaticHandlerBaseFixture
 
 final class CachedInvokableHandlerFixture
 {
+    /** @return array{handler:'invokable'} */
     public function __invoke(): array
     {
         return ['handler' => 'invokable'];
@@ -52,10 +55,22 @@ final class CachedInvokableHandlerFixture
 
 final class CachedInstanceMethodHandlerFixture
 {
+    /** @return array{handler:'instance'} */
     public function handle(): array
     {
         return ['handler' => 'instance'];
     }
+}
+
+/** @throws \UnexpectedValueException */
+function cachedMatcherNext(Request $request, Closure $next): Response
+{
+    $response = $next($request);
+    if (!$response instanceof Response) {
+        throw new UnexpectedValueException('Cached matcher middleware returned a non-response value.');
+    }
+
+    return $response;
 }
 
 function cachedMatcherDispatcher(string $scope): Dispatcher
@@ -268,7 +283,7 @@ test('fresh route caches dispatch alias middleware lazily without development ke
     MiddlewareAliases::register($middlewareAlias, static function () use (&$resolved): Closure {
         $resolved++;
 
-        return static fn(Request $request, Closure $next): Response => $next($request);
+        return static fn(Request $request, Closure $next): Response => cachedMatcherNext($request, $next);
     });
 
     try {
@@ -283,9 +298,13 @@ test('fresh route caches dispatch alias middleware lazily without development ke
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         expect($matcher->canBootFromCache())->toBeTrue();
         $matcher->finalize();
+        if (!$matcher instanceof FusedMatcher && !$matcher instanceof ShardedMatcher && !$matcher instanceof GeneratedMatcher) {
+            throw new UnexpectedValueException('Cached matcher dataset returned an unsupported matcher.');
+        }
+
         expect($matcher->resolveAlias($routeName))->toBe(['/cached', null])
             ->and($matcher->middlewareRequirements())->toBe([$middlewareAlias])
             ->and($resolved)->toBe(0);
@@ -327,7 +346,7 @@ test('class-handler caches use scalar route payloads in every matcher mode', fun
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$route, $vars] = $matcher->match('GET', 'localhost', '/class-handler');
         $response = cachedMatcherDispatcher($mode)->dispatch(
@@ -364,7 +383,7 @@ test('safe first-class static handlers become native cache descriptors in every 
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$staticRoute, $staticVars] = $matcher->match('GET', 'localhost', '/static-callable');
         [$capturedRoute, $capturedVars] = $matcher->match('GET', 'localhost', '/captured-closure');
@@ -414,7 +433,7 @@ test('object-backed handlers retain their binding in every matcher mode', functi
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
         [$invokable, $invokableVars] = $matcher->match('GET', 'localhost', '/invokable');
         [$instance, $instanceVars] = $matcher->match('GET', 'localhost', '/instance');
@@ -450,7 +469,7 @@ test('route caches expose only registered middleware alias requirements', functi
     MiddlewareAliases::register('auth', static fn(): Closure => static fn(
         Request $request,
         Closure $next,
-    ): Response => $next($request));
+    ): Response => cachedMatcherNext($request, $next));
 
     try {
         RouteCache::build([
@@ -463,7 +482,7 @@ test('route caches expose only registered middleware alias requirements', functi
             },
         ]);
 
-        $matcher = $makeMatcher()->enableCache($cache);
+        $matcher = makeTestMatcher($makeMatcher)->enableCache($cache);
         $matcher->finalize();
 
         expect($matcher->middlewareRequirements())->toBe(['auth']);
@@ -490,6 +509,7 @@ test('staged cache validation preserves the active artifact on failure', functio
             },
         ))->toThrow(RuntimeException::class, 'validation failed');
 
+        expect(is_file($file))->toBeTrue();
         expect(require $file)->toBe(['value' => 'active']);
     } finally {
         if (is_file($file)) {
@@ -521,12 +541,14 @@ test('stale cache formats fail clearly in every matcher mode', function (
         }
         $artifact = $mode === 'sharded' ? $cache . DIRECTORY_SEPARATOR . '__manifest.php' : $cache;
         $source = file_get_contents($artifact);
-        expect($source)->toBeString();
+        if (!is_string($source)) {
+            throw new UnexpectedValueException('Expected the cached matcher artifact to be readable.');
+        }
         $staleSource = preg_replace("/'_version' => \\d+/", "'_version' => 0", $source, 1);
         expect($staleSource)->toBeString()->not->toBe($source);
         file_put_contents($artifact, $staleSource);
 
-        $reader = $makeMatcher()->enableCache($cache);
+        $reader = makeTestMatcher($makeMatcher)->enableCache($cache);
         expect(static function () use ($reader): void {
             if (!$reader->canBootFromCache()) {
                 throw new RuntimeException('Cache unexpectedly unavailable.');

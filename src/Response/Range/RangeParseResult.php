@@ -39,6 +39,9 @@ final readonly class RangeParseResult
         return new self(RangeParseStatus::UNSATISFIABLE);
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function requireRange(): Range
     {
         if (!$this->range instanceof Range) {

@@ -13,6 +13,9 @@ final class GeneratedMatcherRouteIndexer
     /** @var array<int,mixed> */
     private array $payloads = [];
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function index(mixed $route): int
     {
         $index = $route instanceof CompiledRoute ? $route->getIndex() : ExecutableRoutePayload::routeIndex($route);

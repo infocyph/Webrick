@@ -18,6 +18,7 @@ final readonly class CorsMiddleware
      * @param list<string> $origins
      * @param string|list<string> $allowHeaders
      * @param string|list<string> $exposeHeaders
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private array $origins = [],
@@ -31,7 +32,12 @@ final readonly class CorsMiddleware
         $this->validatePolicy($this->policy());
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $policy = $this->routePolicy($req);
@@ -99,7 +105,10 @@ final readonly class CorsMiddleware
         return $response->withSmartHeader('Vary', 'Origin');
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \InvalidArgumentException
+     */
     private function applyPreflightHeaders(Response $response, Request $req, array $policy, string $requested, string $allowed): Response
     {
         if ($policy['allowCredentials']) {
@@ -143,6 +152,9 @@ final readonly class CorsMiddleware
         return implode(', ', array_keys($normalized));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function methodAllowed(string $method, string $methods): bool
     {
         $method = HttpMethodEnum::normalize(trim($method));
@@ -161,10 +173,10 @@ final readonly class CorsMiddleware
             return true;
         }
 
-        $actualScheme = strtolower((string) ($actual['scheme'] ?? ''));
-        $patternScheme = strtolower((string) ($pattern['scheme'] ?? ''));
-        $actualHost = strtolower((string) ($actual['host'] ?? ''));
-        $patternHost = strtolower((string) ($pattern['host'] ?? ''));
+        $actualScheme = strtolower($actual['scheme'] ?? '');
+        $patternScheme = strtolower($pattern['scheme'] ?? '');
+        $actualHost = strtolower($actual['host'] ?? '');
+        $patternHost = strtolower($pattern['host'] ?? '');
         if ($actualScheme !== $patternScheme) {
             return false;
         }
@@ -198,7 +210,12 @@ final readonly class CorsMiddleware
         ];
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function preflightResponse(Request $req, array $policy, string $acao): Response
     {
         $rawRequestedMethod = trim($req->getHeaderLine('Access-Control-Request-Method'));
@@ -223,7 +240,10 @@ final readonly class CorsMiddleware
         return $this->applyPreflightHeaders($response, $req, $policy, $requestedHeaders, $allowedHeaders);
     }
 
-    /** @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} */
+    /**
+     * @return array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool}
+     * @throws \InvalidArgumentException
+     */
     private function routePolicy(Request $req): array
     {
         $policy = $this->policy();
@@ -244,7 +264,10 @@ final readonly class CorsMiddleware
         return $policy;
     }
 
-    /** @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy */
+    /**
+     * @param array{origins:list<string>,methods:string,allowHeaders:string|list<string>,exposeHeaders:string|list<string>,maxAgeSeconds:int,allowCredentials:bool,allowPrivateNetwork:bool} $policy
+     * @throws \InvalidArgumentException
+     */
     private function validatePolicy(array $policy): void
     {
         if ($policy['allowCredentials'] && in_array('*', $policy['origins'], true)) {
@@ -252,7 +275,10 @@ final readonly class CorsMiddleware
         }
     }
 
-    /** @param string|list<string> $configured */
+    /**
+     * @param string|list<string> $configured
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private function validateRequestedHeaders(string $requested, string|array $configured): string
     {
         $allowed = $this->csv($configured);

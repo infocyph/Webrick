@@ -11,11 +11,13 @@ final class ArrayCsrfTokenStore implements CsrfTokenStoreInterface
 {
     public function __construct(private ?string $token = null) {}
 
+    #[\Override]
     public function get(): ?string
     {
         return $this->token;
     }
 
+    #[\Override]
     public function put(string $token): void
     {
         $this->token = $token;

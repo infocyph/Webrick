@@ -42,6 +42,7 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private readonly int $statusCode,
@@ -63,6 +64,8 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param list<mixed> $args
+     * @throws \BadMethodCallException
+     * @throws \InvalidArgumentException
      */
     public static function __callStatic(string $method, array $args): self
     {
@@ -84,16 +87,19 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
     /**
      * @return array<string,string>
      */
+    #[\Override]
     public function getHeaders(): array
     {
         return $this->headers;
     }
 
+    #[\Override]
     public function getPublicMessage(): string
     {
         return $this->publicMessage;
     }
 
+    #[\Override]
     public function getStatusCode(): int
     {
         return $this->statusCode;
@@ -101,6 +107,7 @@ class HttpException extends \RuntimeException implements HttpExceptionInterface
 
     /**
      * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
      */
     private static function fromStatus(StatusEnum $status, string $message, array $headers = []): self
     {

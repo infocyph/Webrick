@@ -38,7 +38,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return ($key is null ? array<string,list<string>> : list<string>) */
+    /**
+     * @return ($key is null ? array<string,list<string>> : list<string>)
+     * @throws \InvalidArgumentException
+     */
     public function accept(?string $key = null): array
     {
         if ($this->accept === null) {
@@ -55,6 +58,9 @@ final class RequestHeaders
         return $key === null ? $this->accept : ($this->accept[$key] ?? []);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function all(): HeaderBag
     {
         if ($this->all instanceof HeaderBag) {
@@ -71,7 +77,10 @@ final class RequestHeaders
         return $this->all = new HeaderBag($headers);
     }
 
-    /** @return array{type:?string,charset:?string,length:?int,md5:string} */
+    /**
+     * @return array{type:?string,charset:?string,length:?int,md5:string}
+     * @throws \InvalidArgumentException
+     */
     public function content(): array
     {
         if ($this->content !== null) {
@@ -89,10 +98,13 @@ final class RequestHeaders
         ];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function dependency(?string $key = null): mixed
     {
         if ($this->dep !== null) {
-            return $key ? ($this->dep[$key] ?? []) : $this->dep;
+            return $key !== null && $key !== '' && $key !== '0' ? ($this->dep[$key] ?? []) : $this->dep;
         }
 
         $headers = $this->all();
@@ -113,9 +125,12 @@ final class RequestHeaders
 
         $this->dep = $dep;
 
-        return $key ? ($dep[$key] ?? []) : $dep;
+        return $key !== null && $key !== '' && $key !== '0' ? ($dep[$key] ?? []) : $dep;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function raw(string $name): string
     {
         return $this->req->getHeaderLine($name);
@@ -187,7 +202,10 @@ final class RequestHeaders
         return $out;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function etagList(string $value): array
     {
         if ($value === '') {
@@ -215,7 +233,10 @@ final class RequestHeaders
         }
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function parseAccept(string $raw): array
     {
         $parsed = [];

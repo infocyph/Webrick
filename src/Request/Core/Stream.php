@@ -13,6 +13,8 @@ use SplFileObject;
  *
  * Native string bodies use StringBody; this class remains the explicit
  * resource/file boundary. String input is retained as a compatibility path.
+ *
+ * @api
  */
 final class Stream implements BodyStream
 {
@@ -23,6 +25,9 @@ final class Stream implements BodyStream
     /** @var resource|null */
     private $handle;
 
+    /**
+     * @throws \RuntimeException
+     */
     public function __construct(mixed $source = '')
     {
         $handle = match (true) {
@@ -70,14 +75,17 @@ final class Stream implements BodyStream
         }
     }
 
+    #[\Override]
     public function close(): void
     {
-        if (is_resource($this->handle)) {
-            fclose($this->handle);
-        }
+        $handle = $this->handle;
         $this->handle = null;
+        if (is_resource($handle)) {
+            fclose($handle);
+        }
     }
 
+    #[\Override]
     public function detach(): mixed
     {
         $handle = $this->handle;
@@ -86,11 +94,13 @@ final class Stream implements BodyStream
         return $handle;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return !is_resource($this->handle) || feof($this->handle);
     }
 
+    #[\Override]
     public function getContents(): string
     {
         if (!$this->readable) {
@@ -104,6 +114,7 @@ final class Stream implements BodyStream
         return $data;
     }
 
+    #[\Override]
     public function getMetadata(?string $key = null): mixed
     {
         if (!is_resource($this->handle)) {
@@ -114,6 +125,7 @@ final class Stream implements BodyStream
         return $key === null ? $metadata : ($metadata[$key] ?? null);
     }
 
+    #[\Override]
     public function getSize(): ?int
     {
         if (!is_resource($this->handle)) {
@@ -124,11 +136,13 @@ final class Stream implements BodyStream
         return is_array($stat) ? $stat['size'] : null;
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return $this->readable && is_resource($this->handle);
     }
 
+    #[\Override]
     public function isSeekable(): bool
     {
         if (!is_resource($this->handle)) {
@@ -139,11 +153,13 @@ final class Stream implements BodyStream
         return $metadata['seekable'];
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return $this->writable && is_resource($this->handle);
     }
 
+    #[\Override]
     public function read(int $length): string
     {
         if (!$this->readable) {
@@ -164,11 +180,13 @@ final class Stream implements BodyStream
         return $data;
     }
 
+    #[\Override]
     public function rewind(): void
     {
         $this->seek(0);
     }
 
+    #[\Override]
     public function seek(int $offset, int $whence = SEEK_SET): void
     {
         if (!$this->isSeekable() || fseek($this->need(), $offset, $whence) !== 0) {
@@ -176,6 +194,10 @@ final class Stream implements BodyStream
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
+    #[\Override]
     public function tell(): int
     {
         $position = ftell($this->need());
@@ -186,6 +208,7 @@ final class Stream implements BodyStream
         return $position;
     }
 
+    #[\Override]
     public function write(string $string): int
     {
         if (!$this->writable) {
@@ -199,7 +222,10 @@ final class Stream implements BodyStream
         return $bytes;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @throws \RuntimeException
+     */
     private static function openFileObject(SplFileObject $file)
     {
         if (!$file->isReadable()) {
@@ -213,7 +239,10 @@ final class Stream implements BodyStream
         return $handle;
     }
 
-    /** @return resource */
+    /**
+     * @return resource
+     * @throws \RuntimeException
+     */
     private static function openMemory(string $payload)
     {
         $handle = fopen('php://temp', 'r+');

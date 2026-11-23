@@ -42,17 +42,26 @@ final class CompiledRouterArtifact
      * route/plan validation belongs to compilation or the verified loader path.
      *
      * @param array<string,mixed> $payload
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function fromPayload(array $payload, bool $trusted = false): self
     {
         [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint] = self::header($payload);
 
+        /** @var array<int,mixed> $routes */
         $routes = self::arrayField($payload, 'routes_by_index');
+        /** @var array<int,array<string,mixed>> $plans */
         $plans = self::arrayField($payload, 'plans_by_index');
+        /** @var array<string,array{0:string,1:string|null}> $aliases */
         $aliases = self::arrayField($payload, 'aliases');
+        /** @var list<mixed> $preGlobal */
         $preGlobal = self::arrayField($payload, 'pre_global');
+        /** @var list<mixed> $postGlobal */
         $postGlobal = self::arrayField($payload, 'post_global');
+        /** @var list<string> $preGlobalTags */
         $preGlobalTags = self::arrayField($payload, 'pre_global_tags');
+        /** @var list<string> $postGlobalTags */
         $postGlobalTags = self::arrayField($payload, 'post_global_tags');
 
         if (!$trusted) {
@@ -61,13 +70,6 @@ final class CompiledRouterArtifact
             self::validateTags($postGlobalTags);
         }
 
-        /** @var array<int,mixed> $routes */
-        /** @var array<int,array<string,mixed>> $plans */
-        /** @var array<string,array{0:string,1:string|null}> $aliases */
-        /** @var list<mixed> $preGlobal */
-        /** @var list<mixed> $postGlobal */
-        /** @var list<string> $preGlobalTags */
-        /** @var list<string> $postGlobalTags */
         $artifact = new self(
             routePayloadsByIndex: $routes,
             planPayloadsByIndex: $plans,
@@ -103,6 +105,9 @@ final class CompiledRouterArtifact
             || $this->postGlobalTags !== [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function planForIndex(int $routeIndex): ExecutionPlan
     {
         if (isset($this->decodedPlans[$routeIndex])) {
@@ -133,7 +138,10 @@ final class CompiledRouterArtifact
         return $this->preGlobal;
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \UnexpectedValueException
+     */
     public function routeAttributesForIndex(int $routeIndex): array
     {
         $route = $this->routeForIndex($routeIndex);
@@ -154,6 +162,7 @@ final class CompiledRouterArtifact
      * Decode every matcher route only for cold/non-cached matcher construction.
      *
      * @return list<CompiledRoute>
+     * @throws \UnexpectedValueException
      */
     public function routes(): array
     {
@@ -170,6 +179,7 @@ final class CompiledRouterArtifact
     /**
      * @param array<string,mixed> $payload
      * @return array<array-key,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function arrayField(array $payload, string $key): array
     {
@@ -184,6 +194,8 @@ final class CompiledRouterArtifact
     /**
      * @param list<mixed> $payload
      * @return list<mixed>
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodedList(array $payload): array
     {
@@ -198,6 +210,7 @@ final class CompiledRouterArtifact
     /**
      * @param array<string,mixed> $payload
      * @return array{0:bool,1:string,2:string,3:string}
+     * @throws \UnexpectedValueException
      */
     private static function header(array $payload): array
     {
@@ -225,7 +238,10 @@ final class CompiledRouterArtifact
         return [$hasDomainRoutes, $environment, $configFingerprint, $artifactFingerprint];
     }
 
-    /** @param array<array-key,mixed> $aliases */
+    /**
+     * @param array<array-key,mixed> $aliases
+     * @throws \UnexpectedValueException
+     */
     private static function validateAliases(array $aliases): void
     {
         foreach ($aliases as $name => $tuple) {
@@ -240,7 +256,10 @@ final class CompiledRouterArtifact
         }
     }
 
-    /** @param array<array-key,mixed> $tags */
+    /**
+     * @param array<array-key,mixed> $tags
+     * @throws \UnexpectedValueException
+     */
     private static function validateTags(array $tags): void
     {
         foreach ($tags as $tag) {
@@ -250,6 +269,9 @@ final class CompiledRouterArtifact
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function routeForIndex(int $routeIndex): CompiledRoute
     {
         if (isset($this->decodedRoutes[$routeIndex])) {
@@ -265,6 +287,10 @@ final class CompiledRouterArtifact
         return $this->decodedRoutes[$routeIndex] = $route;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     private function validateRoutePlanTables(): void
     {
         if (count($this->routePayloadsByIndex) !== count($this->planPayloadsByIndex)) {

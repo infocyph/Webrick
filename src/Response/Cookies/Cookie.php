@@ -24,6 +24,10 @@ final class Cookie implements \Stringable
         private bool $partitioned = false,
     ) {}
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function __toString(): string
     {
         $this->assertInvariants();
@@ -53,6 +57,9 @@ final class Cookie implements \Stringable
         return implode('; ', $parts);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function make(
         string $name,
         string $value = '',
@@ -76,6 +83,9 @@ final class Cookie implements \Stringable
         return $cookie;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function domain(string $domain): self
     {
         if (str_starts_with($this->name, '__Host-') && $domain !== '') {
@@ -136,6 +146,9 @@ final class Cookie implements \Stringable
         return $this->name . "\0" . strtolower($this->domain ?? '') . "\0" . $this->path;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function maxAge(int $seconds): self
     {
         if ($seconds < 0) {
@@ -149,6 +162,9 @@ final class Cookie implements \Stringable
         return $cookie;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function partitioned(bool $on = true): self
     {
         $cookie = clone $this;
@@ -161,6 +177,9 @@ final class Cookie implements \Stringable
         return $cookie;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function path(string $path): self
     {
         if ($path === '' || preg_match(self::INVALID_PATH, $path) === 1) {
@@ -182,6 +201,9 @@ final class Cookie implements \Stringable
         return $this->path;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function sameSite(string $mode): self
     {
         $mode = ucfirst(strtolower($mode));
@@ -199,6 +221,9 @@ final class Cookie implements \Stringable
         return $cookie;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function secure(bool $on = true): self
     {
         if (!$on && (str_starts_with($this->name, '__Host-') || str_starts_with($this->name, '__Secure-'))) {
@@ -215,6 +240,9 @@ final class Cookie implements \Stringable
         return $cookie;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function normalizeDomain(string $domain): string
     {
         $domain = trim($domain);
@@ -252,6 +280,9 @@ final class Cookie implements \Stringable
         return $domain;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function assertInvariants(): void
     {
         if (preg_match(self::NAME_RX, $this->name) !== 1) {

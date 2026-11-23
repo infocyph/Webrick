@@ -37,8 +37,6 @@ use UnexpectedValueException;
  * @phpstan-type Middleware   callable(Request, callable(Request):Response):Response
  * @phpstan-type FinalHandler callable(Request):mixed
  *
- * @psalm-immutable
- *
  * @author Infocyph
  */
 final class MiddlewarePipeline
@@ -182,7 +180,7 @@ final class MiddlewarePipeline
     private static function describe(mixed $mw): string
     {
         return \is_object($mw) ? $mw::class
-            : (\is_array($mw) ? 'callable[]' : (string) \gettype($mw));
+            : (\is_array($mw) ? 'callable[]' : \gettype($mw));
     }
 
     /* -------------------------------------------------------------------------
@@ -197,6 +195,7 @@ final class MiddlewarePipeline
      * the first element of $stack is executed first.
      *
      * @return Closure(Request):Response Composed pipeline closure.
+     * @throws \InvalidArgumentException
      */
     private function compose(): Closure
     {
@@ -213,6 +212,9 @@ final class MiddlewarePipeline
         return $next;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveMiddlewareString(string $mw): callable
     {
         if (\str_contains($mw, '::')) {
@@ -230,6 +232,9 @@ final class MiddlewarePipeline
         return \Closure::fromCallable($mw);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function resolveMiddlewareTarget(callable|string $mw): callable
     {
         /** @var array<string, callable> $memo */
@@ -267,6 +272,7 @@ final class MiddlewarePipeline
      * @param callable|string $mw Middleware callable or string descriptor.
      * @param Closure(Request):Response $next Next handler in the pipeline.
      * @return Closure(Request):Response Middleware wrapper closure.
+     * @throws \InvalidArgumentException
      */
     private function wrap(callable|string $mw, Closure $next): Closure
     {

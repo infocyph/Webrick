@@ -6,7 +6,11 @@ namespace Infocyph\Webrick\Request\Http;
 
 use Infocyph\Webrick\Support\HttpUtils;
 
-/** Fast request content negotiator for Accept-family headers with q=0 exclusions preserved. */
+/**
+ * Fast request content negotiator for Accept-family headers with q=0 exclusions preserved.
+ *
+ * @api
+ */
 final readonly class ContentNegotiator
 {
     private const string MATCH_LANGUAGE = 'language';
@@ -27,6 +31,7 @@ final readonly class ContentNegotiator
     /** @var list<array{value:string,q:float,specificity:int,order:int}> */
     private array $languages;
 
+    /** @throws \InvalidArgumentException */
     public function __construct(RequestHeaders $headers)
     {
         $this->accept = self::parse($headers->raw('Accept'), '*/*');
@@ -131,7 +136,10 @@ final readonly class ContentNegotiator
             && strlen($candidate) > strlen($prefix) + strlen($suffix);
     }
 
-    /** @return list<array{value:string,q:float,specificity:int,order:int}> */
+    /**
+     * @return list<array{value:string,q:float,specificity:int,order:int}>
+     * @throws \InvalidArgumentException
+     */
     private static function parse(string $raw, ?string $default = null): array
     {
         if ($raw === '') {

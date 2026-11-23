@@ -16,6 +16,9 @@ final readonly class RuntimeDescriptorInvoker
     /**
      * @param array<array-key,mixed>|callable|string $descriptor
      * @param array<int|string,mixed> $arguments
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \UnexpectedValueException
      */
     public function resolve(array|callable|string $descriptor, array $arguments = []): mixed
     {
@@ -32,6 +35,7 @@ final readonly class RuntimeDescriptorInvoker
     /**
      * @param array<array-key,mixed> $descriptor
      * @param array<int|string,mixed> $arguments
+     * @throws \UnexpectedValueException
      */
     private function resolveArray(array $descriptor, array $arguments): mixed
     {
@@ -59,6 +63,9 @@ final readonly class RuntimeDescriptorInvoker
 
     /**
      * @param array<int|string,mixed> $arguments
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \UnexpectedValueException
      */
     private function resolveString(string $descriptor, array $arguments): mixed
     {

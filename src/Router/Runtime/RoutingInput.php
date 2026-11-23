@@ -27,6 +27,9 @@ final readonly class RoutingInput
         HttpMethodEnum::TRACE->value,
     ];
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         public string $method,
         public string $path,
@@ -37,6 +40,10 @@ final readonly class RoutingInput
         }
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public static function fromGlobals(bool $withHost): self
     {
         /** @var array<string,mixed> $server */
@@ -47,6 +54,9 @@ final readonly class RoutingInput
         return self::fromServer($server, $withHost, $form);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromRequest(Request $request, bool $withHost): self
     {
         $raw = HttpMethodEnum::normalize($request->getMethod());
@@ -62,6 +72,8 @@ final readonly class RoutingInput
     /**
      * @param array<string,mixed> $server
      * @param array<array-key,mixed> $form
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
      */
     public static function fromServer(array $server, bool $withHost, array $form = []): self
     {
@@ -78,7 +90,10 @@ final readonly class RoutingInput
         );
     }
 
-    /** @param array<string,mixed> $server */
+    /**
+     * @param array<string,mixed> $server
+     * @throws \InvalidArgumentException
+     */
     private static function headerMethodOverride(array $server): ?string
     {
         foreach (['HTTP_X_HTTP_METHOD_OVERRIDE', 'HTTP_HTTP_METHOD_OVERRIDE'] as $key) {
@@ -94,6 +109,9 @@ final readonly class RoutingInput
         return null;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normalizeHost(string $raw): string
     {
         $raw = trim($raw);
@@ -114,6 +132,9 @@ final readonly class RoutingInput
         return $host;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normalizeRequestPath(string $requestUri): string
     {
         if ($requestUri === '' || $requestUri === '/') {
@@ -131,7 +152,7 @@ final readonly class RoutingInput
             if ($parts === false) {
                 throw HttpException::badRequest('Invalid request URI.');
             }
-            $path = (string) ($parts['path'] ?? '/');
+            $path = $parts['path'] ?? '/';
         }
 
         return Uri::normalizePath($path === '' ? '/' : $path);
@@ -140,6 +161,7 @@ final readonly class RoutingInput
     /**
      * @param array<string,mixed> $server
      * @param array<array-key,mixed> $form
+     * @throws \InvalidArgumentException
      */
     private static function routingMethodFromServer(array $server, array $form): string
     {

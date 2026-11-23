@@ -49,6 +49,11 @@ final readonly class CompiledRouterKernel
 
     private InterMixRuntime $runtime;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     private function __construct(
         LoggerInterface $log,
         private CompiledRouterArtifact $artifact,
@@ -89,6 +94,11 @@ final readonly class CompiledRouterKernel
         $this->profiler?->mark('kernel_boot');
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function fromCompiledArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -124,6 +134,12 @@ final readonly class CompiledRouterKernel
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function fromPrevalidatedArtifact(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -165,6 +181,12 @@ final readonly class CompiledRouterKernel
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     public static function fromReleaseManifest(
         LoggerInterface $log,
         MatcherInterface $matcher,
@@ -205,6 +227,11 @@ final readonly class CompiledRouterKernel
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     public function handle(?Request $request = null): Response
     {
         try {
@@ -245,24 +272,28 @@ final readonly class CompiledRouterKernel
         }
     }
 
-    /** @param callable(Response): void|null $responseConsumer */
+    /**
+     * @param callable(Response): void|null $responseConsumer
+     * @throws \Throwable
+     */
     public function handleRuntime(RuntimeRequestContext $context, ?callable $responseConsumer = null): Response
     {
         $request = null;
 
         try {
             try {
-                if ($this->preRoutingGate !== null) {
+                $response = $context->preRoutingResponse;
+                if ($response === null && $this->preRoutingGate !== null) {
                     $response = $this->evaluatePreRoutingGate($context->routing, $this->preRoutingGate);
-                    if ($response !== null) {
-                        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-                            $response = self::headResponse($response);
-                        }
-                        $response = $this->consumeRuntimeResponse($response, $responseConsumer);
-                        $this->profiler?->mark('response_ready');
-
-                        return $response;
+                }
+                if ($response !== null) {
+                    if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+                        $response = self::headResponse($response);
                     }
+                    $response = $this->consumeRuntimeResponse($response, $responseConsumer);
+                    $this->profiler?->mark('response_ready');
+
+                    return $response;
                 }
 
                 $response = $this->dispatchRoutingInput($context->routing, $request, $context, $responseConsumer);
@@ -275,13 +306,7 @@ final readonly class CompiledRouterKernel
             } catch (RuntimeResponseWriteException $failure) {
                 throw $failure;
             } catch (Throwable $exception) {
-                $response = $this->renderException($exception, $request, $context);
-                $this->profiler?->mark('error_render');
-                if ($context->routing->method === HttpMethodEnum::HEAD->value) {
-                    $response = self::headResponse($response);
-                }
-
-                return $this->consumeRuntimeResponse($response, $responseConsumer);
+                return $this->consumeRuntimeFailure($exception, $request, $context, $responseConsumer);
             }
         } catch (RuntimeResponseWriteException $failure) {
             throw $failure->failure;
@@ -293,7 +318,11 @@ final readonly class CompiledRouterKernel
         return $this->artifact->hasDomainRoutes;
     }
 
-    /** @param list<string> $allowed */
+    /**
+     * @param list<string> $allowed
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private static function automaticOptionsResponse(array $allowed): Response
     {
         $methods = [];
@@ -311,6 +340,9 @@ final readonly class CompiledRouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function headResponse(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -323,6 +355,31 @@ final readonly class CompiledRouterKernel
         return $response->withBody('');
     }
 
+    /**
+     * @param callable(Response):void|null $responseConsumer
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
+    private function consumeRuntimeFailure(
+        Throwable $exception,
+        ?Request $request,
+        RuntimeRequestContext $context,
+        ?callable $responseConsumer,
+    ): Response {
+        $response = $this->renderException($exception, $request, $context);
+        $this->profiler?->mark('error_render');
+        if ($context->routing->method === HttpMethodEnum::HEAD->value) {
+            $response = self::headResponse($response);
+        }
+
+        return $this->consumeRuntimeResponse($response, $responseConsumer);
+    }
+
+    /**
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     */
     private function consumeRuntimeResponse(Response $response, ?callable $responseConsumer): Response
     {
         if ($responseConsumer === null) {
@@ -338,6 +395,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function controlOutcomeResponse(
         MatchOutcome $outcome,
         RoutingInput $routing,
@@ -359,6 +420,12 @@ final readonly class CompiledRouterKernel
         return $this->errorHandler->renderThrowable($request, $error);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \Infocyph\Webrick\Router\Kernel\RuntimeResponseWriteException
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     private function dispatchRoutingInput(
         RoutingInput $routing,
         ?Request &$request,
@@ -396,7 +463,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \RuntimeException
+     */
     private function dispatchWithoutRequest(
         ExecutionPlan $plan,
         array $vars,
@@ -427,7 +497,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \RuntimeException
+     */
     private function dispatchWithRequest(
         int $routeIndex,
         ExecutionPlan $plan,
@@ -468,7 +541,10 @@ final readonly class CompiledRouterKernel
         return $response;
     }
 
-    /** @return int|array{0:int,1:array<string,string>}|MatchOutcome */
+    /**
+     * @return int|array{0:int,1:array<string,string>}|MatchOutcome
+     * @throws \LogicException
+     */
     private function matchRoutingInput(RoutingInput $routing): int|array|MatchOutcome
     {
         if ($routing->method === '' || $routing->host === '' || $routing->path === '') {
@@ -478,6 +554,11 @@ final readonly class CompiledRouterKernel
         return $this->matcher->matchCompiled($routing->method, $routing->host, $routing->path);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function renderException(
         Throwable $exception,
         ?Request $request,
@@ -506,7 +587,7 @@ final readonly class CompiledRouterKernel
         return $this->runtime->withinScope(
             RuntimeRequestContext::REQUEST_SCOPE,
             $callback,
-            $request instanceof Request ? [Request::class => $request] : [],
+            $request instanceof Request && $this->runtime->has(Request::class) ? [Request::class => $request] : [],
         );
     }
 }

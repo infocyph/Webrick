@@ -17,6 +17,7 @@ final readonly class Cors
      * @param list<string> $origins
      * @param string|list<string>|null $headers
      * @param string|list<string>|null $exposeHeaders
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public array $origins,

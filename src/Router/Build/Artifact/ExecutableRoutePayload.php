@@ -13,6 +13,10 @@ final class ExecutableRoutePayload
 
     private function __construct() {}
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     public static function decode(mixed $payload): CompiledRoute
     {
         if (!is_array($payload) || ($payload['version'] ?? null) !== self::VERSION) {
@@ -51,6 +55,8 @@ final class ExecutableRoutePayload
      *     handler:array<string,mixed>,
      *     middleware:list<array<string,mixed>>
      * }
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public static function encode(CompiledRoute $route): array
     {
@@ -75,6 +81,8 @@ final class ExecutableRoutePayload
 
     /**
      * @return array{object|string,string}|string|callable
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodeHandler(mixed $payload): array|string|callable
     {
@@ -92,6 +100,8 @@ final class ExecutableRoutePayload
     /**
      * @param list<mixed> $payload
      * @return list<object|string|array{object|string,string}>
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     private static function decodeMiddleware(array $payload): array
     {

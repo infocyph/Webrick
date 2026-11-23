@@ -13,13 +13,15 @@ use UnexpectedValueException;
 /** Production middleware pipeline fully prepared once at worker/process boot. */
 final readonly class CompiledMiddlewarePipeline
 {
-    /** @var Closure(Request):Response */
+    /** @var Closure(Request):mixed */
     private Closure $pipeline;
 
     private bool $requiresScope;
 
     /**
-     * @param list<mixed> $middleware @param Closure(Request):Response $terminal
+     * @param list<mixed> $middleware
+     * @param Closure(Request):mixed $terminal
+     * @throws \UnexpectedValueException
      */
     public function __construct(array $middleware, Closure $terminal, InterMixRuntime $runtime)
     {
@@ -48,6 +50,9 @@ final readonly class CompiledMiddlewarePipeline
         $this->requiresScope = $requiresScope;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function handle(Request $request): Response
     {
         $response = ($this->pipeline)($request);
@@ -65,9 +70,13 @@ final readonly class CompiledMiddlewarePipeline
 
     /**
      * @return array{0:Closure(Request,Closure):mixed,1:bool}
+     * @throws \UnexpectedValueException
      */
     private static function compileInvoker(RuntimeDescriptorInvoker $resolver, mixed $descriptor): array
     {
+        if ($descriptor instanceof RuntimeTaggedMiddleware) {
+            return [Closure::fromCallable($descriptor), true];
+        }
         if ($descriptor instanceof RuntimeMiddlewareDescriptor) {
             return [
                 static function (Request $request, Closure $next) use ($resolver, $descriptor): mixed {
@@ -101,6 +110,11 @@ final readonly class CompiledMiddlewarePipeline
         ];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     */
     private static function invokeResolvedMiddleware(
         RuntimeDescriptorInvoker $resolver,
         mixed $resolved,

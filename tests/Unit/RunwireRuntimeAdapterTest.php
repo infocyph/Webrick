@@ -2,6 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Infocyph\Webrick\Tests\Unit;
+
+use Closure;
+use InvalidArgumentException;
+use RuntimeException;
+use stdClass;
+use UnexpectedValueException;
+
 use Infocyph\Runwire\Http\Enum\ProtocolVersion;
 use Infocyph\Runwire\Http\Headers;
 use Infocyph\Runwire\Http\HttpRequest;
@@ -16,6 +24,7 @@ use Infocyph\Runwire\RuntimeContext as RunwireContext;
 use Infocyph\Runwire\Runtime\Enum\CancellationReason;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Runtime\Http\RunwireRuntimeAdapter;
+use Infocyph\Webrick\Runtime\Http\ResponseWriterSupport;
 use Infocyph\Webrick\Runtime\Http\RuntimeRequestExecution;
 
 final class RunwireAdapterBodyFixture implements RequestBodyInterface
@@ -26,16 +35,19 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
 
     public function __construct(private readonly string $body) {}
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->body) - $this->offset;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->offset >= strlen($this->body);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         if (!$this->eof()) {
@@ -45,6 +57,7 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -52,6 +65,10 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         ++$this->readCalls;
@@ -68,12 +85,14 @@ final class RunwireAdapterBodyFixture implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return strlen($this->body);
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -105,6 +124,7 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -120,16 +140,19 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         Closure::fromCallable($callback)($this);
@@ -137,6 +160,7 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         if ($this->ended) {
@@ -154,6 +178,7 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         if ($this->ended) {
@@ -165,6 +190,10 @@ final class RunwireAdapterWriterFixture implements ResponseWriterInterface
     }
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \OverflowException
+ */
 function runwire_adapter_request(
     string $method = 'GET',
     string $target = '/',
@@ -255,6 +284,9 @@ test('runwire request normalization remains lazy and exposes live execution stat
 
     $webRequest = $context->request();
     $execution = $webRequest->getAttribute(RuntimeRequestExecution::ATTRIBUTE);
+    if (!$execution instanceof RuntimeRequestExecution) {
+        throw new UnexpectedValueException('Runwire request execution metadata is missing.');
+    }
 
     expect($webRequest->getMethod())->toBe('POST')
         ->and($webRequest->getProtocolVersion())->toBe('2')
@@ -270,7 +302,6 @@ test('runwire request normalization remains lazy and exposes live execution stat
         ->and($webRequest->server('SERVER_ADDR'))->toBe('10.0.0.1')
         ->and($webRequest->server('SERVER_PORT'))->toBe('443')
         ->and($body->readCalls)->toBe(0)
-        ->and($execution)->toBeInstanceOf(RuntimeRequestExecution::class)
         ->and($execution->requestId)->toBe('runwire-request-1')
         ->and($execution->startMonotonicNanoseconds)->toBe(100)
         ->and($execution->cancelled())->toBeFalse()
@@ -331,6 +362,44 @@ test('runwire response mapping keeps head body suppression and streaming chunk o
         ->and($streamWriter->endCalls)->toBe(1);
 });
 
+
+test('runwire streaming preserves scalar callback output but rejects non-string yielded chunks', function (): void {
+    $adapter = new RunwireRuntimeAdapter();
+    $writer = new RunwireAdapterWriterFixture();
+    $context = $adapter->context(runwire_adapter_request(), $writer);
+
+    $adapter->write(Response::stream(static fn(): int => 42), $context);
+    expect($writer->chunks)->toBe(['42'])
+        ->and($writer->endCalls)->toBe(1);
+
+    $invalidWriter = new RunwireAdapterWriterFixture();
+    $invalidContext = $adapter->context(runwire_adapter_request(), $invalidWriter);
+    expect(fn() => $adapter->write(Response::stream([42]), $invalidContext))
+        ->toThrow(UnexpectedValueException::class, 'must yield strings');
+});
+
+
+test('runwire request form reads are bounded without losing accepted bytes', function (): void {
+    $token = RunwireRequestContext::standalone()->cancellation;
+    $accepted = new RunwireAdapterBodyFixture('name=abc');
+    $acceptedStream = new \Infocyph\Webrick\Runtime\Http\RunwireRequestBodyStream($accepted, $token);
+
+    expect($acceptedStream->getContentsUpTo(8))->toBe('name=abc')
+        ->and($accepted->readCalls)->toBe(1);
+
+    $rejected = new RunwireAdapterBodyFixture(str_repeat('a', 20));
+    $rejectedStream = new \Infocyph\Webrick\Runtime\Http\RunwireRequestBodyStream($rejected, $token);
+    expect($rejectedStream->getContentsUpTo(8))->toBeNull()
+        ->and($rejected->readCalls)->toBe(0)
+        ->and(fn() => $rejectedStream->getContentsUpTo(0))
+        ->toThrow(InvalidArgumentException::class);
+});
+
+test('runwire adapter rejects nonpositive early routing form budgets', function (): void {
+    expect(fn() => new RunwireRuntimeAdapter(maxRoutingFormBytes: 0))
+        ->toThrow(InvalidArgumentException::class);
+});
+
 test('runwire adapter detects transport pressure instead of overrunning the writer', function (): void {
     $adapter = new RunwireRuntimeAdapter();
     $writer = new RunwireAdapterWriterFixture();
@@ -351,4 +420,51 @@ test('runwire adapter rejects missing or mismatched native handles', function ()
         ->toThrow(RuntimeException::class, 'Runwire runtime requires HttpRequest and ResponseWriterInterface handles.');
     expect(fn() => $adapter->context(runwire_adapter_request(), new stdClass()))
         ->toThrow(RuntimeException::class, 'Runwire runtime requires HttpRequest and ResponseWriterInterface handles.');
+});
+
+test('runwire HTTP1 header fast path preserves arrays and HTTP2 status filtering', function (): void {
+    $normal = Response::create('hello', 200, [
+        'X-Repeated' => ['one', 'two'],
+        'Connection' => 'keep-alive',
+    ]);
+    expect(ResponseWriterSupport::headerMap($normal, false))->toBe($normal->getHeaders());
+
+    $http2 = ResponseWriterSupport::headerMap(
+        Response::create('hello', 200, [
+            'Connection' => 'X-Hop',
+            'X-Hop' => 'excluded',
+            'X-Repeated' => ['one', 'two'],
+        ]),
+        true,
+    );
+    expect($http2)->not->toHaveKey('Connection')
+        ->and($http2)->not->toHaveKey('X-Hop')
+        ->and($http2['X-Repeated'] ?? null)->toBe(['one', 'two']);
+
+    $noContent = ResponseWriterSupport::headerMap(
+        Response::create('', 204, ['Content-Length' => '100', 'X-Repeated' => ['one', 'two']]),
+        false,
+    );
+    expect($noContent)->not->toHaveKey('Content-Length')
+        ->and($noContent['X-Repeated'] ?? null)->toBe(['one', 'two']);
+
+    expect(ResponseWriterSupport::withKnownLength($normal->getHeaders(), 5))
+        ->toBe($normal->getHeaders() + ['Content-Length' => ['5']])
+        ->and(ResponseWriterSupport::withKnownLength(['content-length' => ['7']], 5))
+        ->toBe(['content-length' => ['7']])
+        ->and(ResponseWriterSupport::withKnownLength(['X-Repeated' => ['one', 'two']], null))
+        ->toBe(['X-Repeated' => ['one', 'two']]);
+});
+
+test('runwire HTTP1 writer appends known length without discarding repeated headers', function (): void {
+    $adapter = new RunwireRuntimeAdapter();
+    $writer = new RunwireAdapterWriterFixture();
+    $context = $adapter->context(runwire_adapter_request(), $writer);
+    $adapter->write(Response::create('hello', 200, ['X-Repeated' => ['one', 'two']]), $context);
+
+    expect($writer->headers->first('content-length'))->toBe('5')
+        ->and($writer->headers->all('x-repeated'))->toBe(['one', 'two'])
+        ->and($writer->chunks)->toBe(['hello'])
+        ->and($writer->startCalls)->toBe(1)
+        ->and($writer->endCalls)->toBe(1);
 });

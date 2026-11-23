@@ -94,6 +94,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toHaveLength(32)
             ->and($data['span_id'])->toHaveLength(16)
@@ -120,6 +123,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toBe($traceId)
             ->and($data['parent_span_id'])->toBe($parentSpanId)
@@ -135,6 +141,9 @@ describe('TelemetryMiddleware - explicit trace context', function () {
             },
         );
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($data['trace_id'])->toHaveLength(32)
             ->and($data['trace_id'])->not->toBe('invalid-format');
@@ -196,10 +205,68 @@ describe('TelemetryMiddleware - propagation and logging', function () {
         $middleware(mockRequest('GET', '/test'), fn() => Response::json(['ok' => true]));
 
         expect($this->logger->hasInfoRecords())->toBeTrue();
-        $record = $this->logger->records[0];
+        $record = $this->logger->getRecords()[0];
         expect($record['message'])->toContain('GET /test')
             ->and($record['message'])->toContain('trace=')
             ->and($record['message'])->toContain('span=')
             ->and($record['message'])->toContain('[w3c]');
     });
+    test('preserves decorated null loggers and safely bounds the logged client IP', function () {
+        $logger = new class extends \Psr\Log\NullLogger {
+            /** @var list<string> */
+            public array $messages = [];
+
+            #[\Override]
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                unset($level, $context);
+                $this->messages[] = (string) $message;
+            }
+        };
+        $middleware = new TelemetryMiddleware($logger);
+        $middleware(
+            mockRequest('GET', '/safe')->withAttribute('client_ip', "203.0.113.10\r\nFORGED"),
+            static fn(): Response => Response::noContent(),
+        );
+
+        expect($logger->messages)->toHaveCount(1)
+            ->and($logger->messages[0])->toContain('203.0.113.10\\r\\nFORGED')
+            ->and($logger->messages[0])->not->toContain("\r\n");
+    });
+
+    test('generates independent fixed-width cryptographic identifiers across requests', function () {
+        $middleware = new TelemetryMiddleware(new \Psr\Log\NullLogger());
+        $traces = [];
+        $spans = [];
+        $requests = [];
+
+        for ($i = 0; $i < 16; $i++) {
+            $middleware(
+                mockRequest('GET', '/telemetry'),
+                function (Request $request) use (&$traces, &$spans, &$requests): Response {
+                    $context = TraceContext::require($request);
+                    $traces[] = $context->traceId();
+                    $spans[] = $context->spanId();
+                    $requests[] = $context->requestId();
+
+                    return Response::noContent();
+                },
+            );
+        }
+
+        expect(count(array_unique($traces)))->toBe(16)
+            ->and(count(array_unique($spans)))->toBe(16)
+            ->and(count(array_unique($requests)))->toBe(16);
+
+        foreach ($traces as $traceId) {
+            expect($traceId)->toMatch('/^[a-f0-9]{32}$/D');
+        }
+        foreach ($spans as $spanId) {
+            expect($spanId)->toMatch('/^[a-f0-9]{16}$/D');
+        }
+        foreach ($requests as $requestId) {
+            expect($requestId)->toMatch('/^[a-f0-9]{32}$/D');
+        }
+    });
+
 });

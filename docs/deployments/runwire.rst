@@ -1,9 +1,9 @@
 Runwire Runtime
 ===============
 
-Webrick 6 can run behind Runwire 3.0 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
+Webrick 6.1 can run behind Runwire 3.1 or later through its optional native runtime bridge. Runwire is **not** a production dependency of Webrick: ordinary SAPI/shared-hosting installs and Webrick's direct Swoole/OpenSwoole, RoadRunner and Workerman adapters remain first-class paths.
 
-Use Runwire 3.0 or later for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
+Use Runwire 3.1 or later for the corrected HTTP/1, HTTP/2 and HTTP/3 graceful-drain admission boundaries, expected broken-pipe stream-write handling, and bounded worker-fatal diagnostics. Runwire owns worker replacement and drain deadlines; Webrick uses the host's normal application lifecycle.
 
 Choose the Runwire bridge when the application wants Runwire to own runtime selection, worker/process lifecycle, request cancellation/deadlines, drain/shutdown behavior and runtime metrics while Webrick remains the HTTP routing/application kernel.
 
@@ -30,6 +30,12 @@ Responsibilities stay with one owner:
 - **The host application/framework** owns the application ``ContainerBuilder``, compiled release artifacts, configuration and the final runtime choice.
 
 Do not add a second lifecycle engine, a second request-scope store or a second response completion path around this bridge.
+
+Runwire 3.1 also tightens authorization for *outbound* PSR HTTP bridge requests.
+Webrick's native inbound router and runtime adapter do not invoke that
+outbound bridge. A host using it independently must configure explicit
+trusted destination authorization under Runwire's 3.1 contract; do not
+assume that upgrading the inbound Webrick bridge grants outbound access.
 
 InterMix 11 borrowed request scope
 ----------------------------------
@@ -130,7 +136,7 @@ Runwire may dispatch an application after the HTTP request head is normalized wh
 
 Ordinary routing and request creation still do not consume the body. APIs that explicitly require the complete payload, such as Webrick raw/JSON/XML parsing, may consume the remaining bounded Runwire stream and wait for later chunks as needed. A caller that reads only a prefix leaves the remainder unread.
 
-``application/x-www-form-urlencoded`` payloads are parsed lazily by Webrick's request layer when the selected runtime did not already provide parsed form data. If form ``_method`` routing is explicitly enabled, the Runwire adapter consumes that URL-encoded form only because routing itself requires it, then replays the same bytes/parsed values into the eventual Webrick ``Request`` so the body is not lost.
+``application/x-www-form-urlencoded`` payloads are parsed lazily by Webrick's request layer when the selected runtime did not already provide parsed form data. If form ``_method`` routing is explicitly enabled, the Runwire adapter consumes that URL-encoded form only because routing itself requires it, then replays the same bytes/parsed values into the eventual Webrick ``Request`` so the body is not lost. The adapter bounds this otherwise pre-middleware parse to 8 MiB by default; configure ``RunwireRuntimeAdapter(maxRoutingFormBytes: ...)`` with a positive ceiling matched to the host's request admission limits. An oversized routing form is rejected with HTTP 413 before route matching, with no partial form passed to the handler. This limit does not replace Runwire's transport-level body-size, cancellation or deadline policy.
 
 Native Runwire ``multipart/form-data`` has a narrower Webrick 6 boundary. Runwire 3 exposes the multipart payload as a bounded request stream; Webrick does **not** add a second multipart decoder, temporary-file manager or upload-storage policy in this runtime adapter. The raw multipart body remains available to the consuming framework/application decoder. Direct adapters such as SAPI, Swoole/OpenSwoole, Workerman or RoadRunner may continue to pass host-parsed uploaded-file structures when their native request API already provides them. A future Webrick-native multipart subsystem, if desired, should be designed and security-reviewed independently rather than hidden inside the Runwire transport adapter.
 

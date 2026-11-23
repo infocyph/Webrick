@@ -15,9 +15,7 @@ describe('InputSanitizer', function () {
 
         // InputSanitizer normalizes whitespace and special chars
         // For XSS protection, use additional layer like htmlspecialchars
-        expect($clean)
-            ->toBeString()
-            ->and($clean)->toContain('Hello');
+        expect($clean)->toContain('Hello');
     });
 
     it('sanitizes arrays recursively', function () {
@@ -30,11 +28,15 @@ describe('InputSanitizer', function () {
         ];
 
         $clean = $this->sanitizer->sanitizeArray($dirty);
+        $nested = $clean['nested'] ?? null;
+        if (!is_array($nested)) {
+            throw new UnexpectedValueException('Sanitizer lost the nested input shape.');
+        }
 
         expect($clean['name'])
             ->toBe('John')
             ->and($clean['bio'])->toContain('Safe')
-            ->and($clean['nested']['field'])->toBe('value'); // Trimmed
+            ->and($nested['field'])->toBe('value'); // Trimmed
     });
 
     it('handles SQL injection attempts', function () {
@@ -43,7 +45,7 @@ describe('InputSanitizer', function () {
 
         // Sanitizer normalizes but doesn't specifically filter SQL
         // Use prepared statements for SQL injection protection
-        expect($clean)->toBeString();
+        expect($clean)->toContain('DROP TABLE users');
     });
 
     it('preserves safe HTML entities', function () {

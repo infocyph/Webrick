@@ -15,7 +15,9 @@ use InvalidArgumentException;
  */
 function registrar_merge_middleware_with_alias_overrides(array $group, array $route): array
 {
+    /** @var array<int,string|object|array{__alias:true,key:non-empty-string,params:list<string>}> $result */
     $result = [];
+    /** @var array<non-empty-string,int> $aliasPos */
     $aliasPos = [];
 
     $push = static function (string|object $mw) use (&$result, &$aliasPos): void {
@@ -40,7 +42,7 @@ function registrar_merge_middleware_with_alias_overrides(array $group, array $ro
         $push($mw);
     }
 
-    return $result;
+    return array_values($result);
 }
 
 /**
@@ -48,6 +50,7 @@ function registrar_merge_middleware_with_alias_overrides(array $group, array $ro
  * @param string|array<string,mixed>|Closure|null $domain
  * @param list<mixed>|Closure $middleware
  * @return array{0:?string,1:?string,2:list<string|object>,3:?string,4:Closure}
+ * @throws \InvalidArgumentException
  */
 function registrar_normalize_group_inputs(
     array|string|null $prefix,
@@ -256,8 +259,10 @@ function registrar_parse_alias_spec(string $s): ?array
         return null;
     }
 
-    [$name, $paramStr] = \explode(':', $s, 2) + [1 => null];
-    $key = \strtolower(\trim((string) $name));
+    $separator = strpos($s, ':');
+    $name = $separator === false ? $s : substr($s, 0, $separator);
+    $paramStr = $separator === false ? null : substr($s, $separator + 1);
+    $key = \strtolower(\trim($name));
 
     if ($key === '' || !MiddlewareAliases::has($key)) {
         return null;

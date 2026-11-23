@@ -18,7 +18,10 @@ it('discovers routes declared by controller attributes', function (): void {
 
     $route = $routes->findByName('test.hello');
 
-    expect($route)->not->toBeNull()
-        ->and($route?->getMethod())->toBe('GET')
-        ->and($route?->getPath())->toBe('/test/hello/{name}');
+    if ($route === null) {
+        throw new RuntimeException('Expected annotated route to be registered.');
+    }
+
+    expect($route->getMethod())->toBe('GET')
+        ->and($route->getPath())->toBe('/test/hello/{name}');
 });

@@ -20,6 +20,9 @@ final readonly class TelemetryMiddleware
 {
     private bool $otelAvailable;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private LoggerInterface $log = new NullLogger(),
         private bool $addXResponseTime = true,
@@ -53,7 +56,10 @@ final readonly class TelemetryMiddleware
             && class_exists('OpenTelemetry\\API\\Trace\\SpanKind');
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Throwable
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         if ($this->otelAvailable) {
@@ -63,6 +69,9 @@ final readonly class TelemetryMiddleware
         return $this->handleMinimal($req, $next);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromOptions(TelemetryOptions $options): self
     {
         return new self(...$options->toMiddlewareConstructorArgs());
@@ -99,20 +108,12 @@ final readonly class TelemetryMiddleware
 
     private static function generateSpanId(): string
     {
-        try {
-            return bin2hex(random_bytes(8));
-        } catch (\Throwable) {
-            return str_pad(substr(str_replace('.', '', uniqid('', true)), 0, 16), 16, '0');
-        }
+        return bin2hex(random_bytes(8));
     }
 
     private static function generateTraceId(): string
     {
-        try {
-            return bin2hex(random_bytes(16));
-        } catch (\Throwable) {
-            return str_pad(substr(str_replace('.', '', uniqid('', true)), 0, 32), 32, '0');
-        }
+        return bin2hex(random_bytes(16));
     }
 
     private static function isValidFlags(string $hex): bool
@@ -130,7 +131,10 @@ final readonly class TelemetryMiddleware
         return preg_match('/\A[0-9a-f]{32}\z/iD', $hex) === 1 && $hex !== str_repeat('0', 32);
     }
 
-    /** @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace */
+    /**
+     * @param array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string} $trace
+     * @throws \InvalidArgumentException
+     */
     private function addCorrelationHeaders(Response $resp, array $trace, ?string $requestId): Response
     {
         $resp = TelemetrySupport::addCorrelationHeaders(
@@ -156,11 +160,13 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /** @throws \InvalidArgumentException */
     private function addTimingHeaders(Response $resp, float $durMs): Response
     {
         return TelemetrySupport::addTimingHeaders($resp, $this->addXResponseTime, $this->addServerTiming, $durMs);
     }
 
+    /** @throws \InvalidArgumentException */
     private function applyNelHeaders(Response $resp): Response
     {
         return TelemetrySupport::applyNelHeaders(
@@ -173,6 +179,7 @@ final readonly class TelemetryMiddleware
         );
     }
 
+    /** @throws \InvalidArgumentException */
     private function deriveRequestId(Request $req): ?string
     {
         return TelemetrySupport::deriveRequestId(
@@ -183,7 +190,10 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /** @return array{0:string,1:string,2:string,3:string} */
+    /**
+     * @return array{0:string,1:string,2:string,3:string}
+     * @throws \InvalidArgumentException
+     */
     private function extractTraceContext(Request $req): array
     {
         $traceparent = trim($req->getHeaderLine('traceparent'));
@@ -208,7 +218,10 @@ final readonly class TelemetryMiddleware
         return [self::generateTraceId(), '0000000000000000', '01', ''];
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
+     */
     private function handleMinimal(Request $req, Closure $next): Response
     {
         $startNs = hrtime(true);
@@ -216,7 +229,7 @@ final readonly class TelemetryMiddleware
         $req = TraceContext::attach($req, false);
 
         $resp = $next($req);
-        $durMs = (hrtime(true) - $startNs) / 1e6;
+        $durMs = (hrtime(true) - $startNs) / 1_000_000;
         $resp = $this->addTimingHeaders($resp, $durMs);
         $resp = $this->addCorrelationHeaders($resp, $trace, $requestId);
         $resp = $this->applyNelHeaders($resp);
@@ -225,6 +238,7 @@ final readonly class TelemetryMiddleware
         return $resp;
     }
 
+    /** @throws \InvalidArgumentException */
     private function logAccess(
         Request $req,
         Response $resp,
@@ -245,7 +259,10 @@ final readonly class TelemetryMiddleware
         );
     }
 
-    /** @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string} */
+    /**
+     * @return array{0:Request,1:array{trace_id:string,parent_span_id:string,flags:string,tracestate:string,span_id:string},2:?string}
+     * @throws \InvalidArgumentException
+     */
     private function prepareContext(Request $req): array
     {
         [$traceId, $parentSpanId, $flags, $tracestate] = $this->extractTraceContext($req);

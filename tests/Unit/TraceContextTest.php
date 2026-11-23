@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Infocyph\Webrick\Support\RequestContext;
 use Infocyph\Webrick\Support\TraceContext;
 
 describe('TraceContext request-local behavior', function () {
@@ -14,9 +13,7 @@ describe('TraceContext request-local behavior', function () {
 
         $context = TraceContext::initialize($request);
 
-        expect($context)
-            ->toBeInstanceOf(RequestContext::class)
-            ->and($context->traceId())->toBe('trace-a')
+        expect($context->traceId())->toBe('trace-a')
             ->and($context->spanId())->toBe('span-a')
             ->and($context->requestId())->toBe('request-a')
             ->and(TraceContext::fromRequest($request))->toBeNull();

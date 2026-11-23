@@ -11,7 +11,12 @@ use IteratorAggregate;
 use LogicException;
 use Traversable;
 
-/** @implements IteratorAggregate<int, RouteInterface> */
+/**
+ * Mutable route collection used by the public registration and URL APIs.
+ *
+ * @api
+ * @implements IteratorAggregate<int, RouteInterface>
+ */
 final class Collection implements IteratorAggregate
 {
     /** @var array<string,RouteInterface> */
@@ -41,6 +46,9 @@ final class Collection implements IteratorAggregate
     /** @var list<RouteInterface> */
     private array $routes = [];
 
+    /**
+     * @throws \LogicException
+     */
     public function add(RouteInterface $route): void
     {
         $this->assertMutable();
@@ -48,6 +56,9 @@ final class Collection implements IteratorAggregate
         $this->commitRoute($route);
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function addAlias(RouteInterface $route, string $alias): void
     {
         $this->assertMutable();
@@ -57,7 +68,10 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     public function addAliases(RouteInterface $route, array $aliases): void
     {
         $this->assertMutable();
@@ -70,7 +84,10 @@ final class Collection implements IteratorAggregate
         }
     }
 
-    /** @param list<string> $aliases */
+    /**
+     * @param list<string> $aliases
+     * @throws \LogicException
+     */
     public function addWithAliases(RouteInterface $route, array $aliases): void
     {
         $this->assertMutable();
@@ -110,6 +127,9 @@ final class Collection implements IteratorAggregate
         return $this->routes;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function clear(): void
     {
         $this->assertMutable();
@@ -162,6 +182,7 @@ final class Collection implements IteratorAggregate
     }
 
     /** @return Traversable<int,RouteInterface> */
+    #[\Override]
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->routes);
@@ -182,6 +203,9 @@ final class Collection implements IteratorAggregate
         return $this->findByName($name)?->getPath();
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function remove(RouteInterface $route): void
     {
         $this->assertMutable();
@@ -202,6 +226,9 @@ final class Collection implements IteratorAggregate
         return $this->aliasIndex()[$name] ?? null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function assertMutable(): void
     {
         if ($this->frozen) {
@@ -209,6 +236,7 @@ final class Collection implements IteratorAggregate
         }
     }
 
+    /** @throws \InvalidArgumentException */
     private function commitRoute(RouteInterface $route): void
     {
         $this->routes[] = $route;
@@ -233,6 +261,9 @@ final class Collection implements IteratorAggregate
         return "Duplicate canonical route: {$route->getMethod()} {$target}";
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function normalizeAlias(RouteInterface $route, string $alias): string
     {
         $alias = trim($alias);
@@ -246,6 +277,9 @@ final class Collection implements IteratorAggregate
         return $alias;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function rebuildIndices(): void
     {
         $this->byName = [];
@@ -292,6 +326,9 @@ final class Collection implements IteratorAggregate
         $this->aliasIndex = null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function routeIdentity(RouteInterface $route): string
     {
         return RouteIdentity::canonicalKey($route->getMethod(), $route->getDomain(), $route->getPath());
@@ -300,13 +337,14 @@ final class Collection implements IteratorAggregate
     /**
      * @param list<string> $aliases
      * @return list<string>
+     * @throws \LogicException
      */
     private function validateAliasBatch(RouteInterface $route, array $aliases): array
     {
         $normalized = [];
         $seen = [];
         foreach ($aliases as $alias) {
-            $alias = $this->normalizeAlias($route, (string) $alias);
+            $alias = $this->normalizeAlias($route, $alias);
             if (isset($seen[$alias])) {
                 throw new LogicException("Alias '{$alias}' is duplicated in the registration batch.");
             }
@@ -318,6 +356,9 @@ final class Collection implements IteratorAggregate
         return $normalized;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function validateAliasRegistration(RouteInterface $route, string $alias): void
     {
         if (isset($this->byName[$alias])) {
@@ -328,6 +369,9 @@ final class Collection implements IteratorAggregate
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function validateRouteRegistration(RouteInterface $route): void
     {
         $identity = $this->routeIdentity($route);

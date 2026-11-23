@@ -25,6 +25,7 @@ final class CompiledMatcherIrCompactor
     /**
      * @param array<array-key,mixed> $group
      * @phpstan-return MatcherGroup
+     * @throws \UnexpectedValueException
      */
     public static function compactGroup(array $group): array
     {
@@ -52,6 +53,7 @@ final class CompiledMatcherIrCompactor
     /**
      * @param array<array-key,mixed> $hosts
      * @return array<string,MatcherGroup>
+     * @throws \UnexpectedValueException
      */
     public static function compactHosts(array $hosts): array
     {
@@ -66,7 +68,10 @@ final class CompiledMatcherIrCompactor
         return $compact;
     }
 
-    /** @param array<int,mixed> $routes */
+    /**
+     * @param array<int,mixed> $routes
+     * @throws \UnexpectedValueException
+     */
     private static function captureRoute(array &$routes, int $id, mixed $route): void
     {
         $actual = self::routeIndex($route);
@@ -82,6 +87,7 @@ final class CompiledMatcherIrCompactor
     /**
      * @param array<array-key,mixed> $paths
      * @param array<int,mixed> $routes
+     * @throws \UnexpectedValueException
      */
     private static function captureStaticMethod(array $paths, mixed $idsByPath, array &$routes): void
     {
@@ -104,6 +110,7 @@ final class CompiledMatcherIrCompactor
      * @param array<array-key,mixed> $static
      * @param array<array-key,mixed> $staticIds
      * @param array<int,mixed> $routes
+     * @throws \UnexpectedValueException
      */
     private static function captureStaticRoutes(array $static, array $staticIds, array &$routes): void
     {
@@ -120,6 +127,7 @@ final class CompiledMatcherIrCompactor
      * @param array<array-key,mixed> $bucket
      * @param array<int,mixed> $routes
      * @return array<string,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function compactBucket(array $bucket, array &$routes): array
     {
@@ -156,6 +164,7 @@ final class CompiledMatcherIrCompactor
     /**
      * @param array<int,mixed> $routes
      * @return array<string,array<int,array<string,array<string,mixed>>>>
+     * @throws \UnexpectedValueException
      */
     private static function compactDynamic(mixed $raw, array &$routes): array
     {
@@ -178,6 +187,7 @@ final class CompiledMatcherIrCompactor
      * @param array<array-key,mixed> $step
      * @param array<int,mixed> $routes
      * @return array{type:'fallback',segments:mixed,id:int}
+     * @throws \UnexpectedValueException
      */
     private static function compactFallbackStep(array $step, array &$routes): array
     {
@@ -198,6 +208,7 @@ final class CompiledMatcherIrCompactor
      * @param array<array-key,mixed> $counts
      * @param array<int,mixed> $routes
      * @return array<int,array<string,array<string,mixed>>>
+     * @throws \UnexpectedValueException
      */
     private static function compactMethod(array $counts, array &$routes): array
     {
@@ -221,6 +232,7 @@ final class CompiledMatcherIrCompactor
      * @param array<array-key,mixed> $step
      * @param array<int,mixed> $routes
      * @return array{type:'pcre',regex:string,routes:array<string,array{id:int,params:list<string>}>}
+     * @throws \UnexpectedValueException
      */
     private static function compactPcreStep(array $step, array &$routes): array
     {
@@ -247,6 +259,9 @@ final class CompiledMatcherIrCompactor
         return ['type' => 'pcre', 'regex' => $regex, 'routes' => $map];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function routeIndex(mixed $route): int
     {
         $index = $route instanceof CompiledRoute
@@ -263,6 +278,7 @@ final class CompiledMatcherIrCompactor
     /**
      * @param array<array-key,mixed> $values
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private static function stringList(array $values): array
     {

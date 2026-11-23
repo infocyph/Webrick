@@ -18,6 +18,7 @@ use UnexpectedValueException;
  * @phpstan-type RouteValue CompiledRoute|array<mixed>|string
  * @phpstan-type VerbMap array<string,RouteValue>
  * @phpstan-type SegmentSpec array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
+ * @psalm-type SegmentSpec = array{type:'lit',val:string}|array{type:'var',name:string,regex:string}|array{type:'var',name:string,call:callable-string}
  * @phpstan-type DynamicEntry array{segments:list<SegmentSpec>,verbs:VerbMap}
  * @phpstan-type DynamicBuckets array<int,array<string,array<string,DynamicEntry>>>
  * @phpstan-type HostIndex array{static:array<string,VerbMap>,dynamic:DynamicBuckets}
@@ -52,6 +53,10 @@ final class CanonicalMatcherIndex
             : '*';
     }
 
+    /**
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
     public function add(string $host, CompiledRoute $route): void
     {
         $verb = HttpMethodEnum::normalize($route->getMethod());
@@ -93,6 +98,9 @@ final class CanonicalMatcherIndex
         return $this->hosts === [];
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function replaceFromCache(mixed $raw): void
     {
         if (!is_array($raw)) {
@@ -113,7 +121,10 @@ final class CanonicalMatcherIndex
         $this->hosts = $hosts;
     }
 
-    /** @return DynamicBuckets */
+    /**
+     * @return DynamicBuckets
+     * @throws \UnexpectedValueException
+     */
     private function normalizeDynamic(mixed $raw): array
     {
         if (!is_array($raw)) {
@@ -134,7 +145,10 @@ final class CanonicalMatcherIndex
         return $dynamic;
     }
 
-    /** @return DynamicEntry */
+    /**
+     * @return DynamicEntry
+     * @throws \UnexpectedValueException
+     */
     private function normalizeDynamicEntry(mixed $entry, int $count): array
     {
         if (!is_array($entry)) {
@@ -155,6 +169,7 @@ final class CanonicalMatcherIndex
     /**
      * @param array<array-key,mixed> $prefixes
      * @return array<string,array<string,DynamicEntry>>
+     * @throws \UnexpectedValueException
      */
     private function normalizePrefixes(array $prefixes, int $count): array
     {
@@ -174,24 +189,30 @@ final class CanonicalMatcherIndex
         return $normalized;
     }
 
-    /** @return SegmentSpec */
+    /**
+     * @return SegmentSpec
+     * @throws \UnexpectedValueException
+     */
     private function normalizeSegment(mixed $segment): array
     {
         if (!is_array($segment) || !is_string($segment['type'] ?? null)) {
             throw new UnexpectedValueException('Invalid canonical matcher segment.');
         }
         if ($segment['type'] === 'lit') {
-            if (!is_string($segment['val'] ?? null)) {
+            $value = $segment['val'] ?? null;
+            if (!is_string($value)) {
                 throw new UnexpectedValueException('Invalid literal matcher segment.');
             }
 
-            return ['type' => 'lit', 'val' => $segment['val']];
+            return ['type' => 'lit', 'val' => $value];
         }
-        if ($segment['type'] !== 'var' || !is_string($segment['name'] ?? null)) {
+        $name = $segment['name'] ?? null;
+        if ($segment['type'] !== 'var' || !is_string($name)) {
             throw new UnexpectedValueException('Invalid variable matcher segment.');
         }
-        if (is_string($segment['regex'] ?? null)) {
-            return ['type' => 'var', 'name' => $segment['name'], 'regex' => $segment['regex']];
+        $regex = $segment['regex'] ?? null;
+        if (is_string($regex)) {
+            return ['type' => 'var', 'name' => $name, 'regex' => $regex];
         }
         $call = $segment['call'] ?? null;
         if (!is_string($call) || !is_callable($call)) {
@@ -199,10 +220,13 @@ final class CanonicalMatcherIndex
         }
 
         /** @var callable-string $call */
-        return ['type' => 'var', 'name' => $segment['name'], 'call' => $call];
+        return ['type' => 'var', 'name' => $name, 'call' => $call];
     }
 
-    /** @return list<SegmentSpec> */
+    /**
+     * @return list<SegmentSpec>
+     * @throws \UnexpectedValueException
+     */
     private function normalizeSegments(mixed $raw, int $expectedCount): array
     {
         if (!is_array($raw) || !array_is_list($raw) || count($raw) !== $expectedCount) {
@@ -219,6 +243,7 @@ final class CanonicalMatcherIndex
 
     /**
      * @return array<string,array<string,CompiledRoute|array<mixed>|string>>
+     * @throws \UnexpectedValueException
      */
     private function normalizeStatic(mixed $raw): array
     {

@@ -7,6 +7,7 @@ namespace Infocyph\Webrick\Runtime\Http;
 use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
+use Infocyph\Webrick\Support\HeaderLine;
 use RuntimeException;
 
 /** Classic SAPI/FPM/FrankenPHP response runtime selected once at bootstrap. */
@@ -22,6 +23,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     private RuntimeCapabilities $runtimeCapabilities;
 
+    /** @throws \InvalidArgumentException */
     private function __construct(
         private string $finishMode,
         string $name,
@@ -42,6 +44,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * Resolve the synchronous SAPI once during application bootstrap.
+     * @throws \InvalidArgumentException
      */
     public static function current(
         bool $transportCompression = false,
@@ -66,11 +69,17 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         return new self(self::FINISH_NONE, PHP_SAPI, false, $transportCompression, $transportRequestLimits);
     }
 
+    #[\Override]
     public function capabilities(): RuntimeCapabilities
     {
         return $this->runtimeCapabilities;
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function context(
         mixed $nativeRequest = null,
         mixed $nativeResponse = null,
@@ -85,6 +94,11 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    #[\Override]
     public function write(Response $response, RuntimeRequestContext $context): void
     {
         $this->sendHeaders($response);
@@ -97,6 +111,7 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
 
     /**
      * @param resource $output
+     * @throws \RuntimeException
      */
     private static function writeChunk(mixed $output, string $chunk): void
     {
@@ -121,6 +136,9 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function sendHeaders(Response $response): void
     {
         if (headers_sent()) {
@@ -130,9 +148,9 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         http_response_code($response->getStatusCode());
         header_remove('X-Powered-By');
         $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1';
-        $http2 = is_string($protocol) && str_starts_with($protocol, 'HTTP/2');
+        $http2 = ResponseWriterSupport::isMultiplexedProtocol($protocol);
         foreach (ResponseWriterSupport::headers($response, $http2) as [$name, $value]) {
-            header("{$name}: {$value}", false);
+            header(HeaderLine::validated($name, $value), false);
         }
 
         $size = ResponseWriterSupport::knownLength($response);
@@ -141,6 +159,10 @@ final readonly class SapiRuntimeAdapter implements RuntimeAdapterInterface
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function writeBody(Response $response): void
     {
         $output = fopen('php://output', 'wb');

@@ -12,10 +12,20 @@ use Infocyph\Webrick\Router\Route\Route;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $opts = getopt('', ['routes::', 'iters::', 'rounds::', 'warmup::']);
-$routeCount = max(100, (int) ($opts['routes'] ?? 1000));
-$iterations = max(1000, (int) ($opts['iters'] ?? 20000));
-$rounds = max(3, (int) ($opts['rounds'] ?? 5));
-$warmup = max(100, (int) ($opts['warmup'] ?? 2000));
+$optionInt = static function (string $name, int $default) use ($opts): int {
+    if (!is_array($opts) || !array_key_exists($name, $opts)) {
+        return $default;
+    }
+
+    $value = $opts[$name];
+
+    return is_string($value) ? (int) $value : 0;
+};
+
+$routeCount = max(100, $optionInt('routes', 1000));
+$iterations = max(1000, $optionInt('iters', 20000));
+$rounds = max(3, $optionInt('rounds', 5));
+$warmup = max(100, $optionInt('warmup', 2000));
 
 /** @return array{median:float,best:float} */
 function capabilityBench(Closure $operation, int $iterations, int $rounds, int $warmup): array

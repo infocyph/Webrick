@@ -47,11 +47,13 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
 
     private int $received = 0;
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->buffer);
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->ended && $this->buffer === '';
@@ -67,6 +69,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         $this->endCallback?->__invoke($this);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         $this->dataCallback = Closure::fromCallable($callback);
@@ -77,6 +80,7 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         $this->endCallback = Closure::fromCallable($callback);
@@ -87,6 +91,9 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function push(string $chunk): void
     {
         if ($this->ended) {
@@ -101,6 +108,10 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         $this->dataCallback?->__invoke($this);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         if ($maxBytes < 0) {
@@ -111,16 +122,18 @@ final class RunwireDeferredRequestBody implements RequestBodyInterface
         }
 
         $chunk = substr($this->buffer, 0, $maxBytes);
-        $this->buffer = (string) substr($this->buffer, strlen($chunk));
+        $this->buffer = substr($this->buffer, strlen($chunk));
 
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return $this->received;
     }
 
+    #[\Override]
     public function trailers(): ?Headers
     {
         return $this->ended ? new Headers() : null;
@@ -140,10 +153,22 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
 
     public int $status = 0;
 
+
+    public function startCount(): int
+    {
+        return $this->startCalls;
+    }
+
+    public function endCount(): int
+    {
+        return $this->endCalls;
+    }
+
     private bool $ended = false;
 
     private bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -156,16 +181,19 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -173,6 +201,7 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($headers);
@@ -183,6 +212,7 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->chunks[] = $chunk;
@@ -201,6 +231,13 @@ final class RunwireDeferredWriter implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireRequestBodyReadinessTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testCancellationWakesARequestWaitingForBodyDataWithoutStartingAResponse(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -213,21 +250,29 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $application->handle($request, $writer, completeResponse: true);
 
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $request->context->cancel(CancellationReason::TRANSPORT_CANCELLED);
 
             self::assertTrue($request->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $request->context->cancellation->reason());
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
-            self::assertSame(0, $writer->endCalls);
+            self::assertSame(0, $writer->startCount());
+            self::assertSame(0, $writer->endCount());
         } finally {
             $application->shutdown();
             self::cleanup($paths);
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     * @throws \Throwable
+     */
     public function testDeferredJsonBodyResumesIncrementallyAndPreservesRawPayload(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -240,22 +285,22 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $application->handle($request, $writer, completeResponse: true);
 
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->push('{"name":"Ha');
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->push('san"}');
             self::assertSame(1, $application->snapshot()->requestsActive);
-            self::assertSame(0, $writer->startCalls);
+            self::assertSame(0, $writer->startCount());
 
             $body->finish();
 
             self::assertTrue($request->context->completed());
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(1, $writer->startCalls);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->startCount());
+            self::assertSame(1, $writer->endCount());
             self::assertSame(200, $writer->status);
             self::assertSame(
                 ['name' => 'Hasan', 'raw' => '{"name":"Hasan"}'],
@@ -267,6 +312,14 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \RuntimeException
+     * @throws \Throwable
+     */
     public function testDeferredUrlencodedBodyPopulatesParsedFormData(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -285,7 +338,7 @@ final class RunwireRequestBodyReadinessTest extends TestCase
             $body->finish();
 
             self::assertSame(0, $application->snapshot()->requestsActive);
-            self::assertSame(1, $writer->endCalls);
+            self::assertSame(1, $writer->endCount());
             self::assertSame(
                 ['name' => 'Hasan', 'meta' => ['level' => 'senior']],
                 json_decode($writer->body(), true, flags: JSON_THROW_ON_ERROR),
@@ -296,7 +349,11 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -358,7 +415,10 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -370,6 +430,10 @@ final class RunwireRequestBodyReadinessTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(
         string $target,
         string $contentType,

@@ -1,7 +1,6 @@
 <?php
 
 declare(strict_types=1);
-use Infocyph\Webrick\Router\Kernel\RouterKernel;
 
 require_once __DIR__.'/../IntegrationBootstrap.php';
 
@@ -12,7 +11,7 @@ describe('Simple Integration Tests', function () {
         $this->kernel = createTestKernel();
     });
     it('can create and use a RouterKernel', function () {
-        expect($this->kernel)->toBeInstanceOf(RouterKernel::class);
+        expect($this->kernel->handle(mockRequest('GET', '/ping'))->getStatusCode())->toBe(200);
     });
 
     it('routes return 200 OK status', function () {
@@ -40,7 +39,7 @@ describe('Simple Integration Tests', function () {
         $request = mockRequest('GET', '/json');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $contentType = $response->getHeaderLine('Content-Type');
         expect($contentType)->toContain('application/json');
@@ -53,9 +52,13 @@ describe('Simple Integration Tests', function () {
         $request = mockRequest('GET', '/hello/Alice');
         $response = $this->kernel->handle($request);
 
-        expect($response)->toHaveStatus(200);
+        expect($response->getStatusCode())->toBe(200);
 
         $body = json_decode((string) $response->getBody(), true);
+        if (!is_array($body)) {
+            throw new UnexpectedValueException('Expected a decoded JSON object.');
+        }
+
         expect($body)
             ->toHaveKey('hello')
             ->and($body['hello'])->toBe('Alice');
@@ -67,6 +70,6 @@ describe('Simple Integration Tests', function () {
 
         expect($response->getStatusCode())
             ->toBeIn([302, 301, 307, 308])
-            ->and($response)->toHaveHeader('Location');
+            ->and($response->hasHeader('Location'))->toBeTrue();
     });
 });

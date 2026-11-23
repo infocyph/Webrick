@@ -29,7 +29,10 @@ final readonly class CachePolicy
         StatusEnum::NOT_IMPLEMENTED->value => true,
     ];
 
-    /** @return array<string,true|string> */
+    /**
+     * @return array<string,true|string>
+     * @throws \InvalidArgumentException
+     */
     public static function directives(string $line): array
     {
         if (HttpUtils::splitQuoted($line, ',') === null) {
@@ -39,6 +42,9 @@ final readonly class CachePolicy
         return CacheControl::directives($line);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function lookupAllowed(Request $request, bool $skipPersonalized = true): bool
     {
         $method = HttpMethodEnum::normalize($request->getMethod());
@@ -70,6 +76,9 @@ final readonly class CachePolicy
         return $cacheControl !== '' || stripos($request->getHeaderLine('Pragma'), 'no-cache') === false;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function storeTtl(
         Request $request,
         Response $response,
@@ -109,7 +118,10 @@ final readonly class CachePolicy
         return is_string($value) ? HttpUtils::parseUnsignedDecimal($value) : null;
     }
 
-    /** @param array<string,true|string> $directives */
+    /**
+     * @param array<string,true|string> $directives
+     * @throws \InvalidArgumentException
+     */
     private function freshnessLifetime(Response $response, array $directives, int $now): int
     {
         foreach (['s-maxage', 'max-age'] as $name) {
@@ -127,6 +139,9 @@ final readonly class CachePolicy
         return PHP_INT_MAX;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function responseAge(Response $response, int $now): ?int
     {
         $age = $response->hasHeader('Age') ? self::seconds($response->getHeaderLine('Age')) : 0;

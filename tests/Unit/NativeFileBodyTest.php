@@ -15,10 +15,13 @@ test('file responses preserve native file identity', function (): void {
         $response = Response::download($path);
         $file = $response->getFileBody();
 
-        expect($file)->toBeInstanceOf(FileBody::class)
-            ->and($file?->path())->toBe($path)
-            ->and($file?->offset())->toBe(0)
-            ->and($file?->length())->toBe(6)
+        if (!$file instanceof FileBody) {
+            throw new RuntimeException('Expected a native download file body.');
+        }
+
+        expect($file->path())->toBe($path)
+            ->and($file->offset())->toBe(0)
+            ->and($file->length())->toBe(6)
             ->and((string) $file)->toBe('abcdef');
     } finally {
         if (is_file($path) && !unlink($path)) {
@@ -37,11 +40,14 @@ test('range responses preserve native offset and length', function (): void {
         $response = Response::rangedFile($request, $path, 'text/plain');
         $file = $response->getFileBody();
 
+        if (!$file instanceof FileBody) {
+            throw new RuntimeException('Expected a native range file body.');
+        }
+
         expect($response->getStatusCode())->toBe(206)
             ->and($response->getHeaderLine('Content-Range'))->toBe('bytes 2-4/6')
-            ->and($file)->toBeInstanceOf(FileBody::class)
-            ->and($file?->offset())->toBe(2)
-            ->and($file?->length())->toBe(3)
+            ->and($file->offset())->toBe(2)
+            ->and($file->length())->toBe(3)
             ->and((string) $file)->toBe('cde');
     } finally {
         if (is_file($path) && !unlink($path)) {

@@ -64,7 +64,15 @@ Measure cache generation, cached kernel boot and matched-route dispatch as three
 
 Fused and Generated modes publish a single PHP matcher artifact. Sharded mode publishes an immutable generation through one atomic manifest switch, so a partial shard generation is never selected by a new kernel.
 
-For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The Webrick 6 trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; do not reintroduce request-time SHA-256/file hashing or JSON decoding into the prevalidated path.
+For production release metadata, use ``ReleaseManifestLoader`` rather than manually reading and decoding ``release.json``. It prefers the OPcache-friendly PHP runtime manifest emitted beside the JSON manifest. The trusted contract uses ``intermix.digest`` and ``webrick.fingerprint``; current coordinated manifests also carry SHA-256 source identities for executable artifact verification.
+
+Use the prevalidated kernel entrypoint only with host-owned immutable release
+metadata. It still checks artifact bytes and expected identities before executing
+PHP. Keep those integrity checks when profiling or tuning bootstrap. Persistent
+workers pay bootstrap once per worker; ordinary SAPI pays it per request. Measure
+artifact verification, matcher preparation, matching, handler execution and
+response emission separately. Callback execution can occur inside a later stage's
+timing interval, so a post-callback dispatch marker alone is not total handler time.
 
 --------------
 
@@ -378,3 +386,48 @@ Publishing Benchmark Results
 ----------------------------
 
 Publish fixed numbers only with the Webrick commit, PHP build, OPcache/JIT settings, CPU, RAM, operating system, web server, worker configuration, concurrency, route set, matcher, middleware stack, command, duration, warm/cold state, failures and p50/p95/p99 latency. Compare median sustained successful RPM across repeated production-equivalent runs.
+
+
+HTTP certification: default routes, optional admission, and stress
+-------------------------------------------------------------------
+
+The release HTTP matrix retains all 16 workloads across SAPI and Runwire at
+concurrency 1, 5, 20 and 50. It preserves every raw sample, valid-response
+check, p99, throughput, memory delta and paired-trial diagnostic.
+
+**Default routing (nine workloads)** consists of static, dynamic, json,
+stream, upload, not_found, method_not_allowed, file and range. None has
+risk admission registered on that route. These are the framework-wide
+6.0.4-to-6.1 A/B regressions and retain strict 2% successful-throughput,
+15% p99 and 32 MiB RSS budgets. Merely having an independent protected
+route registered must never invoke a risk evaluator for ordinary traffic.
+
+**Opt-in admission (one workload)** is risk_allow. Its middleware is attached
+only to a synthetic protected route and deliberately has a cheap allow
+decision, without Redis or bcrypt. The 6.0.4 reference uses the same host
+evaluator through native middleware; 6.1 uses RiskAdmissionMiddleware.
+Relative throughput/p99 deltas measure optional integration overhead
+and are visible in the report, **not** a regression of default routing.
+Correct responses, lifecycle, memory and the 1,600 ms synthetic safety
+ceiling remain hard gates. This ceiling is not a production login SLA.
+
+**Contention/worker stress (six workloads)** consists of slow,
+risk_counter, risk_clearance, risk_login, risk_login_invalid and
+risk_provider_slow. These exercise delays, Redis and bcrypt rather than
+isolated router overhead. The provider case uses a local 5 ms sleep,
+Redis and bcrypt; it is not a live CAPTCHA provider benchmark.
+Both baseline and candidate must return complete valid responses,
+correct status, zero transport errors/timeouts, zero rejected requests,
+drained request/queue telemetry and healthy worker lifecycle.
+The 32 MiB RSS limit still applies. Every synthetic stress trial has a
+hard absolute p99 ceiling of 8,000 ms for bcrypt/provider work or
+1,600 ms for the other stress workloads (80% of their existing client
+timeouts). These are fixture safety bounds, not production SLAs.
+Relative throughput and p99 changes remain fully reported as diagnostics.
+
+The three lanes express different contracts; they do not skip any
+workload or grant risk admission access to ordinary routes. A/A compares
+source-identical checkouts to diagnose measurement repeatability. A/B
+compares the pinned 6.0.4 baseline with the release candidate. Both
+retain completeness, security and operational checks, while only the
+default-routing lane determines framework-wide speed regression.

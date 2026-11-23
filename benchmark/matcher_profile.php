@@ -12,8 +12,18 @@ use Infocyph\Webrick\Router\Route\Route;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 $opts = getopt('', ['routes::', 'warm-iters::']);
-$routeCount = max(100, (int) ($opts['routes'] ?? 5000));
-$warmIterations = max(1000, (int) ($opts['warm-iters'] ?? 25000));
+$optionInt = static function (string $name, int $default) use ($opts): int {
+    if (!is_array($opts) || !array_key_exists($name, $opts)) {
+        return $default;
+    }
+
+    $value = $opts[$name];
+
+    return is_string($value) ? (int) $value : 0;
+};
+
+$routeCount = max(100, $optionInt('routes', 5000));
+$warmIterations = max(1000, $optionInt('warm-iters', 25000));
 
 function profileRemoveTree(string $path): void
 {
@@ -42,7 +52,9 @@ function profileRemoveTree(string $path): void
 function profileDirectorySize(string $path): int
 {
     if (is_file($path)) {
-        return filesize($path) ?: 0;
+        $size = filesize($path);
+
+        return $size === false ? 0 : $size;
     }
     if (!is_dir($path)) {
         return 0;

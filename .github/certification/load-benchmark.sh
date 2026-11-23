@@ -8,31 +8,54 @@ DURATION_SECONDS="${4:-5}"
 TRIALS="${5:-3}"
 PARITY_DURATION_SECONDS="${6:-$DURATION_SECONDS}"
 MODE="${7:-all}"
+CONCURRENCY="${8:-all}"
+RUNWIRE_TAIL_SECONDS="${9:-$DURATION_SECONDS}"
+
+source "$(dirname "${BASH_SOURCE[0]}")/load-concurrency.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-source-control.sh"
+load_select_admission_modes "$BASELINE_ROOT" "$CANDIDATE_ROOT"
+load_validate_trials "$TRIALS"
+SELECTED_CONCURRENCIES="$(load_concurrencies "$CONCURRENCY")"
 
 if [[ "$MODE" != "all" && "$MODE" != "sapi" && "$MODE" != "runwire" ]]; then
     echo "Certification mode must be all, sapi or runwire." >&2
     exit 1
 fi
 
+SERVER_COMMAND=()
+LOAD_CLIENT=(wrk)
+if [[ -n "${CERT_SERVER_CPUS:-}" && -n "${CERT_LOAD_CPUS:-}" ]]; then
+    SERVER_COMMAND=(taskset -c "$CERT_SERVER_CPUS")
+    LOAD_CLIENT=(taskset -c "$CERT_LOAD_CPUS" wrk)
+fi
+
 HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cert-server.php"
 mkdir -p "$RESULT_DIR"
+if [[ "${CERT_AA_CONTROL:-0}" == 1 ]]; then
+    printf 'measurement=identical-source-aa\nsource_sha=%s\nbaseline_admission=%s\ncandidate_admission=%s\n' \
+        "$(git -C "$BASELINE_ROOT" rev-parse HEAD)" "$BASELINE_ADMISSION" "$CANDIDATE_ADMISSION" \
+        > "$RESULT_DIR/aa-identity.txt"
+fi
 RESULTS="$RESULT_DIR/load-results.jsonl"
 : > "$RESULTS"
-CURRENT_PID=""
+declare -A SERVER_PIDS=() SERVER_PORTS=() SERVER_EVENTS=() EVENT_EVIDENCE=()
 
-cleanup_current() {
-    if [[ -n "$CURRENT_PID" ]] && kill -0 "$CURRENT_PID" 2>/dev/null; then
-        stop_server "$CURRENT_PID" || true
-    fi
+cleanup_servers() {
+    local version
+    for version in "${!SERVER_PIDS[@]}"; do
+        stop_server "${SERVER_PIDS[$version]}" || true
+        if [[ -f "${SERVER_EVENTS[$version]:-}" ]]; then
+            cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}" || true
+        fi
+    done
 }
-trap cleanup_current EXIT
+trap cleanup_servers EXIT
 
 PAYLOAD="$RESULT_DIR/upload.bin"
 head -c 16384 /dev/zero > "$PAYLOAD"
 VALIDATION_SCRIPT="$RESULT_DIR/validate.lua"
 cat > "$VALIDATION_SCRIPT" <<'LUA'
 local workload = os.getenv("CERT_WORKLOAD") or ""
-local close_delimited = os.getenv("CERT_CLOSE_DELIMITED") == "1"
 local threads = {}
 validated = 0
 invalid = 0
@@ -50,14 +73,15 @@ if workload == "upload" then
     wrk.method = "POST"
     wrk.body = string.rep("x", 16384)
     wrk.headers["Content-Type"] = "application/octet-stream"
+elseif string.sub(workload, 1, 5) == "risk_" then
+    wrk.method = "POST"
+    local password = workload == "risk_login_invalid" and "wrong-password" or "cert-password"
+    wrk.body = '{"account":"cert-account","password":"' .. password .. '"}'
+    wrk.headers["Content-Type"] = "application/json"
 elseif workload == "method_not_allowed" then
     wrk.method = "POST"
 elseif workload == "range" then
     wrk.headers["Range"] = "bytes=0-15"
-end
-
-if close_delimited then
-    wrk.headers["Connection"] = "close"
 end
 
 local function full_match(body, pattern)
@@ -93,6 +117,12 @@ response = function(status, headers, body)
         ok = status == 206 and body == "0123456789abcdef"
     elseif workload == "slow" then
         ok = status == 200 and full_match(body, '^{"slept_ms":5,"pid":[1-9]%d*}$')
+    elseif workload == "risk_allow" or workload == "risk_counter" or workload == "risk_clearance" then
+        ok = status == 200 and body == "risk-admitted"
+    elseif workload == "risk_login" or workload == "risk_provider_slow" then
+        ok = status == 200 and body == '{"authenticated":true}'
+    elseif workload == "risk_login_invalid" then
+        ok = status == 401 and body == '{"error":"invalid_credentials"}'
     end
 
     if ok then
@@ -114,32 +144,10 @@ done = function(summary, latency, requests)
 end
 LUA
 
-descendants() {
-    local parent="$1"
-    local child
-    echo "$parent"
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        descendants "$child"
-    done < <(pgrep -P "$parent" 2>/dev/null || true)
-}
-
-rss_kb() {
-    local pid="$1"
-    local total=0
-    local child
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        local rss
-        rss="$(ps -o rss= -p "$child" 2>/dev/null | tr -d ' ' || true)"
-        if [[ "$rss" =~ ^[0-9]+$ ]]; then
-            total=$((total + rss))
-        fi
-    done < <(descendants "$pid" | sort -u)
-    echo "$total"
-}
-
 source "$(dirname "${BASH_SOURCE[0]}")/load-rss-sampler.sh"
+init_rss_sampling
+source "$(dirname "${BASH_SOURCE[0]}")/load-worker-events.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/load-metrics.sh"
 
 wait_ready() {
     local url="$1"
@@ -157,24 +165,28 @@ start_server() {
     local root="$1"
     local mode="$2"
     local port="$3"
-    local label="$4"
-    local log="$RESULT_DIR/${label}-${mode}.log"
+    local version="$4"
+    local trial="$5"
+    local log="$RESULT_DIR/${version}-t${trial}-c${6:-all}-${mode}.log"
+    local admission="$BASELINE_ADMISSION"
+    if [[ "$version" == candidate ]]; then
+        admission="$CANDIDATE_ADMISSION"
+    fi
 
     if [[ "$mode" == "sapi" ]]; then
-        WEBRICK_CERT_ROOT="$root" php -S "127.0.0.1:${port}" "$HARNESS" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" WEBRICK_CERT_ROOT="$root" \
+            "${SERVER_COMMAND[@]}" bash "$(dirname "$HARNESS")/run-fpm.sh" "$port" "$HARNESS" >"$log" 2>&1 &
     else
-        php "$HARNESS" runwire             "--root=${root}"             "--address=127.0.0.1:${port}"             "--recycle=0" >"$log" 2>&1 &
+        WEBRICK_CERT_ADMISSION="$admission" "${SERVER_COMMAND[@]}" php "$HARNESS" runwire \
+            "--root=${root}" "--address=127.0.0.1:${port}" "--recycle=0" >"$log" 2>&1 &
     fi
-    local pid=$!
+    SERVER_PIDS[$version]=$!
+    SERVER_PORTS[$version]=$port
 
     if ! wait_ready "http://127.0.0.1:${port}"; then
         cat "$log" >&2 || true
-        kill "$pid" 2>/dev/null || true
-        wait "$pid" 2>/dev/null || true
         return 1
     fi
-
-    echo "$pid"
 }
 
 stop_server() {
@@ -190,6 +202,24 @@ stop_server() {
 
     kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
+    return 1
+}
+
+assert_benchmark_port_released() {
+    local port="$1"
+    local attempt
+    # A parent can exit before an FPM, Nginx or Runwire descendant
+    # releases the listening socket. Reject leftover workers before
+    # switching to the other measured version.
+    for attempt in {1..30}; do
+        if ! curl --silent --output /dev/null --connect-timeout 1 --max-time 1 \
+            "http://127.0.0.1:${port}/cert/static"; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "Benchmark port ${port} is still serving after parent shutdown." >&2
     return 1
 }
 
@@ -246,37 +276,6 @@ wrk_p99_ms() {
     latency_ms "${raw:-0ms}"
 }
 
-validate_metrics_json() {
-    jq -e '
-        type == "object"
-        and (.pid | type == "number")
-        and (.memory_current_bytes | type == "number")
-        and (.memory_peak_bytes | type == "number")
-        and (.requests_active | type == "number")
-        and (
-            ((.queued_bytes_current? // null) | type == "number")
-            or ((.deferred_backlog? // null) | type == "number")
-        )
-        and (.rejected_requests_total | type == "number")
-    ' >/dev/null
-}
-
-fetch_metrics() {
-    local port="$1"
-    local metrics
-    if ! metrics="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/__cert/metrics")"; then
-        echo "Unable to fetch required certification telemetry from port ${port}." >&2
-        return 1
-    fi
-    if ! validate_metrics_json <<<"$metrics"; then
-        echo "Certification telemetry from port ${port} is missing required fields." >&2
-        echo "$metrics" >&2
-        return 1
-    fi
-
-    printf '%s' "$metrics"
-}
-
 assert_correctness() {
     local port="$1"
     local base="http://127.0.0.1:${port}"
@@ -295,6 +294,28 @@ assert_correctness() {
     status="$(curl -sS -o "$RESULT_DIR/range.body" -w '%{http_code}' -H 'Range: bytes=0-15' "$base/cert/file")"
     [[ "$status" == "206" ]]
     [[ "$(wc -c < "$RESULT_DIR/range.body" | tr -d ' ')" == "16" ]]
+    for workload in risk_allow risk_counter risk_clearance; do
+        [[ "$(curl -fsS -X POST "$base/cert/$workload")" == "risk-admitted" ]]
+    done
+    [[ "$(curl -fsS -H 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"cert-password"}' "$base/cert/risk_login")" == '{"authenticated":true}' ]]
+    status="$(curl -sS -o "$RESULT_DIR/login-invalid.body" -w '%{http_code}' -H 'Content-Type: application/json' \
+        --data '{"account":"cert-account","password":"wrong-password"}' "$base/cert/risk_login_invalid")"
+    [[ "$status" == 401 ]]
+    [[ "$(cat "$RESULT_DIR/login-invalid.body")" == '{"error":"invalid_credentials"}' ]]
+    for action in challenge deny unavailable; do
+        local expected_status
+        case "$action" in
+            challenge) expected_status=429 ;;
+            deny) expected_status=403 ;;
+            unavailable) expected_status=503 ;;
+        esac
+        status="$(curl -sS -D "$RESULT_DIR/risk.headers" -o "$RESULT_DIR/risk.body" -w '%{http_code}' \
+            -X POST -H "X-Cert-Risk-Action: $action" "$base/cert/risk_allow")"
+        [[ "$status" == "$expected_status" ]]
+        grep -qi '^Cache-Control: no-store' "$RESULT_DIR/risk.headers"
+        jq -e 'keys == ["error"]' "$RESULT_DIR/risk.body" >/dev/null
+    done
     fetch_metrics "$port" >/dev/null
 }
 
@@ -303,11 +324,10 @@ assert_invalid_fixture() {
     local port="$2"
     local path="$3"
     local label="$4"
-    local close_delimited="${5:-0}"
     local output="$RESULT_DIR/reject-${label}.txt"
 
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
-        wrk -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT" \
+    CERT_WORKLOAD="$workload" \
+        "${LOAD_CLIENT[@]}" -t1 -c1 -d1s --latency -s "$VALIDATION_SCRIPT" \
         "http://127.0.0.1:${port}${path}" >"$output" 2>&1
     if (( $(field "CERT Invalid responses" "$output") == 0 )); then
         echo "Response validator accepted invalid fixture ${label}." >&2
@@ -318,7 +338,6 @@ assert_invalid_fixture() {
 assert_rejection_probes() {
     local mode="$1"
     local port="$2"
-    local close_delimited=0
 
     if validate_metrics_json <<<'{}'; then
         echo "Telemetry validator accepted an empty metrics object." >&2
@@ -335,11 +354,11 @@ assert_rejection_probes() {
     assert_invalid_fixture upload "$port" /cert/wrong-upload "${mode}-wrong-upload"
     assert_invalid_fixture upload "$port" /cert/leading-zero-upload "${mode}-leading-zero-upload"
     assert_invalid_fixture slow "$port" /cert/leading-zero-slow "${mode}-leading-zero-slow"
+    assert_invalid_fixture risk_allow "$port" /cert/corrupt "${mode}-wrong-risk-allow"
+    assert_invalid_fixture risk_login "$port" /cert/corrupt "${mode}-wrong-risk-login"
+    assert_invalid_fixture risk_login_invalid "$port" /cert/corrupt "${mode}-wrong-risk-login-invalid"
 
-    if [[ "$mode" == "sapi" ]]; then
-        close_delimited=1
-    fi
-    assert_invalid_fixture stream "$port" /cert/truncated "${mode}-truncated-stream" "$close_delimited"
+    assert_invalid_fixture stream "$port" /cert/truncated "${mode}-truncated-stream"
 }
 record_wrk() {
     local version="$1"
@@ -352,20 +371,22 @@ record_wrk() {
     local path="$8"
     local duration="${9:-$DURATION_SECONDS}"
 
-    local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
-    local threads="$concurrency"
-    local close_delimited=0
-    if (( threads > 4 )); then
-        threads=4
-    fi
-    if [[ "$mode" == "sapi" && "$workload" == "stream" ]]; then
-        close_delimited=1
+    if [[ "$mode" == runwire ]] && (( concurrency >= 20 && RUNWIRE_TAIL_SECONDS > duration )); then
+        case "$workload" in
+            risk_login*|risk_provider_slow) duration="$RUNWIRE_TAIL_SECONDS" ;;
+        esac
     fi
 
+    local out="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}.txt"
+    local threads
+    threads="$(load_threads "$concurrency" "$workload")"
+    local request_timeout
+    request_timeout="$(load_request_timeout "$workload")"
+
     local rss_samples="$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-rss.txt"
-    CERT_WORKLOAD="$workload" CERT_CLOSE_DELIMITED="$close_delimited" \
+    CERT_WORKLOAD="$workload" \
         run_load_with_rss "$pid" "$rss_samples" "$out" \
-        wrk -t"$threads" -c"$concurrency" -d"${duration}s" --latency \
+        "${LOAD_CLIENT[@]}" -t"$threads" -c"$concurrency" -d"${duration}s" --latency --timeout "${request_timeout}s" \
         -s "$VALIDATION_SCRIPT" "http://127.0.0.1:${port}${path}"
 
     local rps complete non2xx p99 rss metrics validated invalid
@@ -382,7 +403,10 @@ record_wrk() {
     timeout_errors="$(wrk_socket_error "$out" timeout)"
     failed=$((connect_errors + read_errors + write_errors + timeout_errors))
     rss="$(awk 'max < $1 { max = $1 } END { print max + 0 }' "$rss_samples")"
-    metrics="$(fetch_metrics "$port")"
+    if [[ "$mode" == runwire ]]; then
+        assert_load_worker_events "${SERVER_EVENTS[$version]}"
+    fi
+    metrics="$(fetch_drained_metrics "$port" "$RESULT_DIR/${version}-${mode}-${workload}-c${concurrency}-t${trial}-settling.jsonl" "$request_timeout")"
 
     jq -cn         --arg version "$version"         --arg mode "$mode"         --arg workload "$workload"         --argjson concurrency "$concurrency"         --argjson trial "$trial"         --argjson rps "${rps:-0}"         --argjson complete "${complete:-0}"         --argjson validated "${validated:-0}"         --argjson invalid "${invalid:-0}"         --argjson failed "$failed"         --argjson non2xx "${non2xx:-0}"         --argjson connect_errors "$connect_errors"         --argjson read_errors "$read_errors"         --argjson write_errors "$write_errors"         --argjson timeout_errors "$timeout_errors"         --argjson p99 "${p99:-0}"         --argjson rss_kb "$rss"         --argjson metrics "$metrics"         '{
             version:$version,
@@ -408,61 +432,80 @@ record_wrk() {
         }' >> "$RESULTS"
 }
 
-run_trial() {
-    local version="$1"
-    local root="$2"
-    local mode="$3"
-    local port="$4"
-    local trial="$5"
-
-    local pid
-    pid="$(start_server "$root" "$mode" "$port" "${version}-t${trial}")"
-    CURRENT_PID="$pid"
-
+warm_server() {
+    local version="$1" root="$2" mode="$3" port="$4" trial="$5" concurrency="$6"
+    if [[ "$mode" == runwire ]]; then
+        SERVER_EVENTS[$version]="$root/.runtime-certification/router.php.supervisor-events.jsonl"
+        EVENT_EVIDENCE[$version]="$RESULT_DIR/${version}-t${trial}-c${concurrency}-supervisor-events.jsonl"
+    fi
+    start_server "$root" "$mode" "$port" "$version" "$trial" "$concurrency"
     assert_correctness "$port"
     assert_rejection_probes "$mode" "$port"
-    wrk -t2 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+    "${LOAD_CLIENT[@]}" -t1 -c5 -d2s "http://127.0.0.1:${port}/cert/static" >/dev/null 2>&1
+}
 
-    for concurrency in 1 5 20 50; do
-        record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" "/cert/static"
-        record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" "/cert/dynamic/42"
-        record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" "/cert/json"
-        record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" "/cert/stream"
-        record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" "/cert/upload"
-
-        record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" "/cert/missing" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" "/cert/static" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" "/cert/file" "$PARITY_DURATION_SECONDS"
-        record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" "/cert/slow/5" "$PARITY_DURATION_SECONDS"
+record_suite() {
+    local version="$1" mode="$2" concurrency="$3" trial="$4"
+    local port="${SERVER_PORTS[$version]}" pid="${SERVER_PIDS[$version]}"
+    record_wrk "$version" "$mode" static "$concurrency" "$trial" "$port" "$pid" /cert/static
+    record_wrk "$version" "$mode" dynamic "$concurrency" "$trial" "$port" "$pid" /cert/dynamic/42
+    record_wrk "$version" "$mode" json "$concurrency" "$trial" "$port" "$pid" /cert/json
+    record_wrk "$version" "$mode" stream "$concurrency" "$trial" "$port" "$pid" /cert/stream
+    record_wrk "$version" "$mode" upload "$concurrency" "$trial" "$port" "$pid" /cert/upload
+    record_wrk "$version" "$mode" not_found "$concurrency" "$trial" "$port" "$pid" /cert/missing "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" method_not_allowed "$concurrency" "$trial" "$port" "$pid" /cert/static "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" file "$concurrency" "$trial" "$port" "$pid" /cert/file "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" range "$concurrency" "$trial" "$port" "$pid" /cert/file "$PARITY_DURATION_SECONDS"
+    record_wrk "$version" "$mode" slow "$concurrency" "$trial" "$port" "$pid" /cert/slow/5 "$PARITY_DURATION_SECONDS"
+    local workload
+    for workload in risk_allow risk_counter risk_clearance risk_login risk_login_invalid risk_provider_slow; do
+        record_wrk "$version" "$mode" "$workload" "$concurrency" "$trial" "$port" "$pid" "/cert/$workload"
     done
-
-    stop_server "$pid"
-    if [[ "$mode" == runwire ]]; then
-        cp "$root/.runtime-certification/router.php.supervisor-events.jsonl" \
-            "$RESULT_DIR/${version}-t${trial}-supervisor-events.jsonl"
-    fi
-    CURRENT_PID=""
 }
 
 run_mode_pair() {
     local mode="$1"
-    local baseline_port="$2"
-    local candidate_port="$3"
-
+    local -A ports=([baseline]="$2" [candidate]="$3")
+    local trial concurrency version baseline_port candidate_port root
     for trial in $(seq 1 "$TRIALS"); do
-        if (( trial % 2 == 1 )); then
-            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
-            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
-        else
-            run_trial candidate "$CANDIDATE_ROOT" "$mode" "$candidate_port" "$trial"
-            run_trial baseline "$BASELINE_ROOT" "$mode" "$baseline_port" "$trial"
-        fi
+        # Preserve four-way order/port crossing; no concurrent idle server.
+        read -r baseline_port candidate_port < <(load_pair_ports "$trial" "$2" "$3")
+        ports[baseline]="$baseline_port"
+        ports[candidate]="$candidate_port"
+        printf 'mode=%s trial=%s order=%s baseline_port=%s candidate_port=%s lifecycle=one-active-server\n' "$mode" "$trial" \
+            "$(load_pair_order "$trial" | paste -sd, -)" "$baseline_port" "$candidate_port" \
+            >> "$RESULT_DIR/pair-order.txt"
+
+        for concurrency in $SELECTED_CONCURRENCIES; do
+            # Run the unchanged 16-workload suite against one active process
+            # group at a time. Previously both servers stayed alive during
+            # every sample, sharing the server CPU pool even when not targeted.
+            for version in $(load_pair_order "$trial"); do
+                if [[ -n "${SERVER_PIDS[baseline]:-}" || -n "${SERVER_PIDS[candidate]:-}" ]]; then
+                    echo 'Benchmark lifecycle violated: another server is still active.' >&2
+                    exit 1
+                fi
+                root="$BASELINE_ROOT"
+                if [[ "$version" == candidate ]]; then
+                    root="$CANDIDATE_ROOT"
+                fi
+                warm_server "$version" "$root" "$mode" "${ports[$version]}" "$trial" "$concurrency"
+                record_suite "$version" "$mode" "$concurrency" "$trial"
+                stop_server "${SERVER_PIDS[$version]}"
+                assert_benchmark_port_released "${ports[$version]}"
+                unset 'SERVER_PIDS[$version]' 'SERVER_PORTS[$version]'
+                if [[ "$mode" == runwire ]]; then
+                    cp "${SERVER_EVENTS[$version]}" "${EVENT_EVIDENCE[$version]}"
+                    assert_load_worker_events "${EVENT_EVIDENCE[$version]}"
+                    unset 'SERVER_EVENTS[$version]' 'EVENT_EVIDENCE[$version]'
+                fi
+            done
+        done
     done
 }
 
-php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
-php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
+WEBRICK_CERT_ADMISSION="$BASELINE_ADMISSION" php "$HARNESS" prepare "--root=${BASELINE_ROOT}"
+WEBRICK_CERT_ADMISSION="$CANDIDATE_ADMISSION" php "$HARNESS" prepare "--root=${CANDIDATE_ROOT}"
 
 if [[ "$MODE" == "all" || "$MODE" == "sapi" ]]; then
     run_mode_pair sapi 18080 18081

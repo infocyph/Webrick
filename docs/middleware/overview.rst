@@ -84,6 +84,18 @@ Persistent workers
 
 Middleware instances shared by a worker must not hold current-request state. Request IDs, trace data, ``Vary``, decoded cookies, IP information and native transport handles remain request-local. Webrick runtime adapters expose transport capabilities so portable middleware can bypass work already owned by Swoole/OpenSwoole, RoadRunner or Workerman.
 
+Compiled global tag bindings are resolved inside the active InterMix request
+scope. The cached pipeline retains tag names and runtime bindings; the container
+owns the lifetime of each resolved middleware instance. Scoped and transient
+middleware are resolved for each request, including interleaved Fibers, and remain
+available through runtime response consumption. Empty tags preserve the explicit
+middleware order. Set unused global tag lists to ``[]`` when compiling routes
+that should stay on the requestless, scopeless path.
+
+Native handlers receive ``Request`` directly. Declare ``Request::class`` as an
+InterMix input when container-managed services need it injected. Webrick seeds
+that input only when it is declared, including through the Runwire bridge.
+
 Deep dives
 ----------
 

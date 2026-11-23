@@ -24,6 +24,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
 
     /**
      * @param list<string> $bypassPaths Exact paths that may bypass maintenance.
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         string $file = __DIR__ . '/../../../storage/framework/down',
@@ -38,6 +39,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
         $this->bypassPaths = self::normalizeBypassPaths($bypassPaths);
     }
 
+    #[\Override]
     public function evaluate(RoutingInput $routing): ?Response
     {
         if (isset($this->bypassPaths[$routing->path])) {
@@ -52,6 +54,7 @@ final readonly class MaintenancePreRoutingGate implements PreRoutingGateInterfac
     /**
      * @param list<string> $paths
      * @return array<non-empty-string,true>
+     * @throws \InvalidArgumentException
      */
     private static function normalizeBypassPaths(array $paths): array
     {

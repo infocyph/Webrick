@@ -6,6 +6,9 @@ namespace Infocyph\Webrick\Request\Core;
 
 use InvalidArgumentException;
 
+/**
+ * Per-instance URI components are stored as independent mutable values.
+ */
 final class Uri implements \Stringable
 {
     private string $fragment;
@@ -24,6 +27,9 @@ final class Uri implements \Stringable
 
     private string $user;
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(string $uri = '')
     {
         if ($uri === '') {
@@ -58,6 +64,7 @@ final class Uri implements \Stringable
         $this->fragment = $this->filterFragment($parts['fragment'] ?? '');
     }
 
+    #[\Override]
     public function __toString(): string
     {
         $uri = $this->scheme !== '' ? $this->scheme . ':' : '';
@@ -76,11 +83,17 @@ final class Uri implements \Stringable
         return $uri;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function from(string $raw): self
     {
         return new self($raw);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function fromComponents(
         string $scheme = '',
         string $host = '',
@@ -108,7 +121,10 @@ final class Uri implements \Stringable
         return $uri;
     }
 
-    /** @param array<string,mixed> $srv */
+    /**
+     * @param array<string,mixed> $srv
+     * @throws \InvalidArgumentException
+     */
     public static function fromServerParams(array $srv, ?int $trustedProxyFlags = null): self
     {
         $scheme = UriServerParams::detectScheme($srv, $trustedProxyFlags);
@@ -125,6 +141,10 @@ final class Uri implements \Stringable
         }
 
         $absolute = $path[0] === '/';
+        if ($absolute && !str_contains($path, '//') && !str_contains($path, '/.')) {
+            return $path;
+        }
+
         $trailingSlash = str_ends_with($path, '/') || str_ends_with($path, '/.') || str_ends_with($path, '/..');
         $stack = [];
         foreach (explode('/', $path) as $segment) {
@@ -244,6 +264,9 @@ final class Uri implements \Stringable
         return $path === $this->path ? $this : $this->withComponent('path', $path);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withPort(?int $port): self
     {
         if ($port !== null && ($port < 1 || $port > 65535)) {
@@ -328,6 +351,9 @@ final class Uri implements \Stringable
         return [$target === '' ? '/' : $target, $query, $fragment];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function asciiHost(string $host): string
     {
         if ($host === '' || preg_match('/[\x00-\x20\x7f\/\\\\@?#]/', $host) === 1) {
@@ -379,6 +405,9 @@ final class Uri implements \Stringable
         return ltrim($query, '?');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function ipv6Host(string $host): string
     {
         if (!str_ends_with($host, ']')) {

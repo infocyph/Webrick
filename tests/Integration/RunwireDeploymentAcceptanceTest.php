@@ -29,16 +29,19 @@ use PHPUnit\Framework\TestCase;
 
 final class DeploymentAcceptanceBody implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -46,6 +49,7 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -53,6 +57,7 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -60,12 +65,14 @@ final class DeploymentAcceptanceBody implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -81,6 +88,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
 
     public bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         ++$this->endCalls;
@@ -90,16 +98,19 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -107,6 +118,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -115,6 +127,7 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         return new WriteResult(WriteState::ACCEPTED, strlen($chunk));
@@ -123,6 +136,12 @@ final class DeploymentAcceptanceWriter implements ResponseWriterInterface
 
 final class RunwireDeploymentAcceptanceTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     * @throws \Infocyph\Runwire\Exception\SupervisorException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     public function testNativePortableAndPreforkSelectionsConsumeTheSameWebrickApplicationFactory(): void
     {
         $selector = new RuntimeSelector();
@@ -157,6 +176,12 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertApplicationFactoryAcceptsSelection($prefork, 'native-prefork');
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     * @throws \Infocyph\Runwire\Exception\SupervisorException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     public function testHostDriverSelectionsRemainRunwireOwnedAndAcceptTheWebrickFactory(): void
     {
         $selector = new RuntimeSelector();
@@ -185,6 +210,9 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function testGenericSapiAdapterRemainsAnIndependentFirstClassPath(): void
     {
         $capabilities = SapiRuntimeAdapter::current()->capabilities();
@@ -195,6 +223,10 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertFalse($capabilities->transportDrainVisibility);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function assertApplicationFactoryAcceptsSelection(RuntimeSelection $selection, string $mode): void
     {
         $seenDriver = null;
@@ -226,6 +258,10 @@ final class RunwireDeploymentAcceptanceTest extends TestCase
         self::assertSame(0, $application->snapshot()->requestsActive);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(): HttpRequest
     {
         return new HttpRequest(

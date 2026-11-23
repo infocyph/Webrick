@@ -26,7 +26,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /** @var array<string,list<string>> */
     private array $map = [];
 
-    /** @param array<array-key,mixed> $seed */
+    /**
+     * @param array<array-key,mixed> $seed
+     * @throws \InvalidArgumentException
+     */
     public function __construct(array $seed = [])
     {
         foreach ($seed as $name => $value) {
@@ -43,65 +46,95 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $this->map;
     }
 
+    #[\Override]
     public function count(): int
     {
         return count($this->map);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function first(string $name): ?string
     {
         return $this->map[$this->norm($name)][0] ?? null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     public function get(string $name): array
     {
         return $this->map[$this->norm($name)] ?? [];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function getHeaderLine(string $name): string
     {
         return ($values = $this->get($name)) ? implode(',', $values) : '';
     }
 
     /** @return Traversable<string,list<string>> */
+    #[\Override]
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->map);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function has(string $name): bool
     {
         return isset($this->map[$this->norm($name)]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function line(string $name): ?string
     {
         return ($values = $this->get($name)) ? implode(',', $values) : null;
     }
 
+    #[\Override]
     public function offsetExists(mixed $offset): bool
     {
         return is_string($offset) && $this->has($offset);
     }
 
     /** @return list<string> */
+    #[\Override]
     public function offsetGet(mixed $offset): array
     {
         return is_string($offset) ? $this->get($offset) : [];
     }
 
+    /**
+     * @throws \LogicException
+     */
+    #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new \LogicException('HeaderBag is immutable');
     }
 
+    /**
+     * @throws \LogicException
+     */
+    #[\Override]
     public function offsetUnset(mixed $offset): void
     {
         throw new \LogicException('HeaderBag is immutable');
     }
 
-    /** @return string|list<string>|null */
+    /**
+     * @return string|list<string>|null
+     * @throws \InvalidArgumentException
+     */
     public function value(string $name): string|array|null
     {
         $all = $this->get($name);
@@ -112,7 +145,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return count($all) === 1 ? $all[0] : $all;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     public function with(string $name, string|array $value): self
     {
         $copy = clone $this;
@@ -121,7 +157,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     public function withAdded(string $name, string|array $value): self
     {
         $values = $this->normalizeValues($value);
@@ -140,6 +179,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $copy;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function without(string $name): self
     {
         $copy = clone $this;
@@ -158,6 +200,9 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function norm(string $name): string
     {
         if ($name === '' || preg_match(self::INVALID_HEADER_NAME, $name) === 1) {
@@ -167,7 +212,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return ucwords(strtolower($name), '-');
     }
 
-    /** @return string|list<string> */
+    /**
+     * @return string|list<string>
+     * @throws \InvalidArgumentException
+     */
     private function normalizeSeedValue(mixed $value): string|array
     {
         if (is_string($value)) {
@@ -191,6 +239,7 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
     /**
      * @param string|array<array-key,mixed> $value
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function normalizeValues(string|array $value): array
     {
@@ -209,7 +258,10 @@ final class HeaderBag implements ArrayAccess, Countable, IteratorAggregate
         return $normalized;
     }
 
-    /** @param string|array<array-key,mixed> $value */
+    /**
+     * @param string|array<array-key,mixed> $value
+     * @throws \InvalidArgumentException
+     */
     private function set(string $name, string|array $value): void
     {
         $this->map[$this->norm($name)] = $this->normalizeValues($value);

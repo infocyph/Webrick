@@ -38,8 +38,6 @@ final readonly class CookieEncryptionMiddleware
 
     private CookieAttributeApplier $cookieAttributeApplier;
 
-    private bool $hasBrotli;
-
     private bool $hasGzip;
 
     private bool $hasZstd;
@@ -49,7 +47,10 @@ final readonly class CookieEncryptionMiddleware
 
     private int $kid;
 
-    /** @param string|array<int,string> $keyOrKeys */
+    /**
+     * @param string|array<int,string> $keyOrKeys
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         #[\SensitiveParameter]
         string|array $keyOrKeys,
@@ -85,7 +86,6 @@ final readonly class CookieEncryptionMiddleware
         $this->keys = $keys;
         $this->kid = $activeKid;
         $this->hasZstd = function_exists('zstd_compress') && function_exists('zstd_uncompress');
-        $this->hasBrotli = function_exists('brotli_compress') && function_exists('brotli_uncompress');
         $this->hasGzip = function_exists('gzdeflate') && function_exists('gzinflate');
         $this->cookieAttributeApplier = new CookieAttributeApplier(
             forceSecure: $this->forceSecure,
@@ -94,7 +94,14 @@ final readonly class CookieEncryptionMiddleware
         );
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \LengthException
+     * @throws \Random\RandomException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $incoming = $req->getCookieParams();
@@ -108,7 +115,10 @@ final readonly class CookieEncryptionMiddleware
         return $this->encryptAll($next($req), $incoming);
     }
 
-    /** Return a new middleware instance with a different active encryption key. */
+    /**
+     * Return a new middleware instance with a different active encryption key.
+     * @throws \InvalidArgumentException
+     */
     public function rotateToKid(int $kid): self
     {
         if (!isset($this->keys[$kid])) {
@@ -140,6 +150,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @param non-empty-array<int,string> $segments
      * @param array<string,bool|string> $attrs
+     * @throws \InvalidArgumentException
      */
     private function appendEncryptedSegments(CookieJar $jar, string $baseName, array $segments, array $attrs): CookieJar
     {
@@ -155,6 +166,9 @@ final readonly class CookieEncryptionMiddleware
         return $jar;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function assertSupportedProtectedName(string $name): void
     {
         $baseName = substr($name, strlen($this->cookiePrefix));
@@ -174,7 +188,7 @@ final readonly class CookieEncryptionMiddleware
             $best = $compressed;
             $mode = self::MODE_ZSTD;
         }
-        if ($this->hasBrotli && ($compressed = brotli_compress($plaintext, 4)) !== false && strlen($compressed) < strlen($best)) {
+        if (function_exists('brotli_compress') && function_exists('brotli_uncompress') && is_string($compressed = \brotli_compress($plaintext, 4)) && strlen($compressed) < strlen($best)) {
             $best = $compressed;
             $mode = self::MODE_BROTLI;
         }
@@ -206,13 +220,16 @@ final readonly class CookieEncryptionMiddleware
     {
         return match ($mode) {
             self::MODE_ZSTD => $this->hasZstd ? zstd_uncompress($payload) : null,
-            self::MODE_BROTLI => $this->hasBrotli ? brotli_uncompress($payload) : null,
+            self::MODE_BROTLI => function_exists('brotli_uncompress') && function_exists('brotli_compress') ? \brotli_uncompress($payload) : null,
             self::MODE_GZIP => $this->hasGzip ? gzinflate($payload) : null,
             self::MODE_NONE => $payload,
             default => null,
         };
     }
 
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function decrypt(string $baseName, string $cipher): mixed
     {
         $resolved = $this->resolveCipherInput($cipher);
@@ -277,7 +294,14 @@ final readonly class CookieEncryptionMiddleware
         return self::STORE_BLOB_V1 . substr(hash('sha3-256', $cipher), 0, 8) . self::STORE_SEP . $cipher;
     }
 
-    /** @param array<string,mixed> $incoming */
+    /**
+     * @param array<string,mixed> $incoming
+     * @throws \Random\RandomException
+     * @throws \LengthException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function encryptAll(Response $response, array $incoming): Response
     {
         $setCookies = $response->getHeader('Set-Cookie');
@@ -329,6 +353,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @return non-empty-array<int,string>
      * @throws RandomException|LengthException|RuntimeException
+     * @throws \Psr\Cache\InvalidArgumentException
      */
     private function encryptSegments(string $baseName, #[\SensitiveParameter] string $plaintext): array
     {
@@ -337,7 +362,9 @@ final readonly class CookieEncryptionMiddleware
             return [1 => $cipher];
         }
 
-        $parts = str_split($cipher, $this->maxBytes);
+        /** @var int<256,4096> $maxBytes Validated by the constructor. */
+        $maxBytes = $this->maxBytes;
+        $parts = str_split($cipher, $maxBytes);
         if (count($parts) <= 10) {
             return array_combine(range(1, count($parts)), $parts);
         }
@@ -357,6 +384,7 @@ final readonly class CookieEncryptionMiddleware
     /**
      * @param array<string,bool|string> $attrs
      * @param array<string,mixed> $incoming
+     * @throws \InvalidArgumentException
      */
     private function expireStaleSegments(
         CookieJar $jar,
@@ -384,6 +412,9 @@ final readonly class CookieEncryptionMiddleware
         return $jar;
     }
 
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function fromStore(string $id): mixed
     {
         if ($this->store === null) {
@@ -408,7 +439,11 @@ final readonly class CookieEncryptionMiddleware
         );
     }
 
-    /** @return int<0,255> */
+    /**
+     * @phpstan-return int<0,255>
+     * @psalm-return int<min,255>
+     * @throws \RuntimeException
+     */
     private function kidByte(): int
     {
         if ($this->kid > 255) {
@@ -457,10 +492,13 @@ final readonly class CookieEncryptionMiddleware
     private function parseSetCookie(string $line): ?array
     {
         $chunks = array_map(trim(...), explode(';', $line));
-        if (!str_contains($chunks[0], '=')) {
+        $first = $chunks[0];
+        $separator = strpos($first, '=');
+        if ($separator === false) {
             return null;
         }
-        [$name, $value] = explode('=', $chunks[0], 2);
+        $name = substr($first, 0, $separator);
+        $value = substr($first, $separator + 1);
         $attrs = [];
         for ($i = 1, $count = count($chunks); $i < $count; $i++) {
             if ($chunks[$i] === '') {
@@ -473,6 +511,9 @@ final readonly class CookieEncryptionMiddleware
         return ['name' => trim($name), 'value' => $value, 'attrs' => $attrs];
     }
 
+    /**
+     * @throws \Psr\Cache\InvalidArgumentException
+     */
     private function resolveCipherInput(string $cipher): ?string
     {
         if (!str_starts_with($cipher, self::MODE_STORE)) {

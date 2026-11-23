@@ -54,6 +54,9 @@ final readonly class MatchOutcome
         return new self(MatchOutcomeType::NOT_FOUND);
     }
 
+    /**
+     * @throws \LogicException
+     */
     public function requireRoute(): CompiledRoute
     {
         if (!$this->route instanceof CompiledRoute) {

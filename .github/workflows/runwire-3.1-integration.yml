@@ -1,0 +1,118 @@
+name: Runwire 3.1 Functional Integration
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, master, develop, development]
+    paths:
+      - composer.json
+      - "src/Runtime/Http/**"
+      - "tests/Unit/Runwire*"
+      - "tests/Integration/Runwire*"
+      - ".github/workflows/runwire-3.1-integration.yml"
+      - ".github/workflows/release-acceptance.yml"
+permissions:
+  contents: read
+jobs:
+  functional:
+    name: Runwire lifecycle PHP ${{ matrix.php-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["8.6", "8.5", "8.4"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "${{ matrix.php-version }}"
+          coverage: none
+          extensions: redis
+      - name: Install and assert Runwire 3.1 minimum
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          php -r '
+          require "vendor/autoload.php";
+          $version = \Composer\InstalledVersions::getVersion("infocyph/runwire");
+          if (!is_string($version) || version_compare($version, "3.1", "<")) {
+              throw new RuntimeException("Runwire 3.1 or later required.");
+          }
+          printf("Runwire installed: %s\n", $version);
+          '
+      - name: Verify continuation, cancellation, pressure and deployment
+        run: |
+          vendor/bin/pest --configuration=vendor/infocyph/phpforge/resources/pest.xml \
+            --bootstrap=vendor/autoload.php \
+            tests/Unit/RunwireRuntimeApplicationTest.php \
+            tests/Unit/RunwireRuntimeAdapterTest.php \
+            tests/Integration/RunwireResponsePressureCancellationTest.php \
+            tests/Integration/RunwireStreamingLifecycleTest.php \
+            tests/Integration/RunwireDeploymentAcceptanceTest.php \
+            --fail-on-skipped --compact
+      - name: Install live protocol clients
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y curl jq nghttp2-client openssl
+      - name: Verify live H1/H2 and unexpected worker exits (no performance budgets)
+        run: |
+          set -euo pipefail
+          php .github/certification/cert-server.php prepare --root="$PWD"
+          mkdir -p .runtime-certification/tls
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes \
+            -keyout .runtime-certification/tls/key.pem \
+            -out .runtime-certification/tls/cert.pem \
+            -days 1 -subj "/CN=localhost" >/dev/null 2>&1
+          php .github/certification/cert-server.php runwire \
+            --root="$PWD" --address=127.0.0.1:18453 --workers=2 \
+            --tls-cert="$PWD/.runtime-certification/tls/cert.pem" \
+            --tls-key="$PWD/.runtime-certification/tls/key.pem" \
+            > .runtime-certification/runwire-31-live.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill -TERM "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          ready=0
+          for attempt in {1..80}; do
+            if curl -kfsS --http1.1 --max-time 2 https://127.0.0.1:18453/cert/static >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat .runtime-certification/runwire-31-live.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+          test "$ready" = 1
+          test "$(curl -kfsS --http1.1 https://127.0.0.1:18453/cert/static)" = "webrick-cert-ok"
+          curl -kfsS --http1.1 https://127.0.0.1:18453/cert/json | jq -e '.ok == true and .protocol == "1.1"'
+          curl -kfsS --http2 https://127.0.0.1:18453/cert/json | jq -e '.ok == true and .protocol == "2"'
+          test "$(curl -kfsS https://127.0.0.1:18453/cert/file -H 'Range: bytes=0-15' | wc -c | tr -d ' ')" = "16"
+          h2load -n 120 -c 6 -m 4 https://127.0.0.1:18453/cert/static \
+            | tee .runtime-certification/runwire-31-h2.txt
+          grep -Eq '0 failed, 0 errored' .runtime-certification/runwire-31-h2.txt
+          for attempt in {1..20}; do
+            curl -kfsS --http1.1 --max-time 0.5 --limit-rate 64B \
+              https://127.0.0.1:18453/cert/file >/dev/null 2>&1 || true
+          done
+          test "$(curl -kfsS https://127.0.0.1:18453/cert/static)" = "webrick-cert-ok"
+          events=.runtime-certification/router.php.supervisor-events.jsonl
+          test -f "$events"
+          if jq -s -e 'any(.[]; .type == "worker_exited" and .expected == false)' "$events"; then
+            echo 'Unexpected worker exit during protocol and cancellation tests.' >&2
+            exit 1
+          fi
+      - name: Preserve worker evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runwire-31-php${{ matrix.php-version }}
+          path: |
+            .runtime-certification/runwire-31-live.log
+            .runtime-certification/runwire-31-h2.txt
+            .runtime-certification/router.php.supervisor-events.jsonl
+          if-no-files-found: warn

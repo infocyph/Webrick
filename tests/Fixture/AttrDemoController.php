@@ -13,6 +13,10 @@ use Infocyph\Webrick\Router\Definition\Attribute\Route;
 #[Group(prefix: '/attr', name: 'attr.')]
 final class AttrDemoController
 {
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     #[Route(method: 'GET', path: '/hello/{name}', name: 'hello')]
     #[Produces(types: ['application/json'])]
     public function hello(string $name): Response

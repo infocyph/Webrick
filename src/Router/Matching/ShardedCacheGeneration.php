@@ -17,6 +17,7 @@ final class ShardedCacheGeneration
 
     /**
      * @return array{0:string,1:string}
+     * @throws \RuntimeException
      */
     public static function create(string $cacheDir): array
     {
@@ -31,6 +32,7 @@ final class ShardedCacheGeneration
 
     /**
      * @return list<string>
+     * @throws \RuntimeException
      */
     public static function middlewareRequirements(string $cacheDir, int $version): array
     {
@@ -52,6 +54,7 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
+     * @throws \RuntimeException
      */
     public static function publish(string $cacheDir, int $version, string $generation, array $middleware): void
     {
@@ -80,6 +83,9 @@ final class ShardedCacheGeneration
         self::publishPointer($cacheDir, $generation);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function resolve(string $cacheDir, int $version): ?string
     {
         $pointed = self::resolvePointer($cacheDir);
@@ -104,6 +110,9 @@ final class ShardedCacheGeneration
         return self::activeDirectory($cacheDir, $generation);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function activeDirectory(string $cacheDir, string $generation): string
     {
         if (\preg_match('/^generation-[A-Za-z0-9-]+$/D', $generation) !== 1) {
@@ -150,6 +159,9 @@ final class ShardedCacheGeneration
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private static function resolvePointer(string $cacheDir): ?string
     {
         $pointer = $cacheDir . \DIRECTORY_SEPARATOR . self::POINTER;
@@ -166,6 +178,7 @@ final class ShardedCacheGeneration
 
     /**
      * @param list<string> $middleware
+     * @throws \RuntimeException
      */
     private static function writeMetadata(string $cacheDir, int $version, string $generation, array $middleware): void
     {

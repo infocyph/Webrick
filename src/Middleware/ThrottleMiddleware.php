@@ -25,6 +25,7 @@ final readonly class ThrottleMiddleware
     /**
      * @param Closure(Request):string|null $identifierResolver
      * @param Closure(Request):bool|null $bypass
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private int $max = 1,
@@ -56,6 +57,9 @@ final readonly class ThrottleMiddleware
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \Psr\Cache\InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -91,6 +95,9 @@ final readonly class ThrottleMiddleware
             ->withSmartHeader('RateLimit-Policy', "{$this->max};w={$this->window}");
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function buildDefaultPool(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -141,6 +148,7 @@ final readonly class ThrottleMiddleware
 
     /**
      * @return array{hits:int,reset:int} @throws InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
      */
     private function loadApproximate(string $key, int $reset, int $now): array
     {
@@ -163,6 +171,8 @@ final readonly class ThrottleMiddleware
 
     /**
      * @param array{hits:int,reset:int} $payload @throws InvalidArgumentException
+     * @throws \Psr\Cache\InvalidArgumentException
+     * @throws \RuntimeException
      */
     private function persistApproximate(string $key, array $payload): void
     {
@@ -182,6 +192,8 @@ final readonly class ThrottleMiddleware
 
     /**
      * @throws InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \RuntimeException
      */
     private function reserveCapacity(string $key, int $resetAt, int $now, int $cost): int
     {

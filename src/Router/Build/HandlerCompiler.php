@@ -19,6 +19,9 @@ use ReflectionParameter;
 /** Build-plane handler and middleware inspector. */
 final class HandlerCompiler
 {
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function compile(CompiledRoute $route): ExecutionPlan
     {
         $handler = $this->normalizeHandler($route->getHandler());
@@ -49,6 +52,7 @@ final class HandlerCompiler
     /**
      * @param list<mixed> $middleware
      * @return list<mixed>
+     * @throws \InvalidArgumentException
      */
     public function compileMiddlewareList(array $middleware): array
     {
@@ -129,6 +133,7 @@ final class HandlerCompiler
     /**
      * @param array{0:object|string,1:string}|string|callable $handler
      * @return array{0:object|string,1:string}|string|callable
+     * @throws \InvalidArgumentException
      */
     private function normalizeHandler(array|string|callable $handler): array|string|callable
     {
@@ -145,6 +150,9 @@ final class HandlerCompiler
         return $this->normalizeStringHandler($handler);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function normalizeMiddlewareDescriptor(mixed $entry): mixed
     {
         if ($entry instanceof RuntimeMiddlewareDescriptor || is_callable($entry)) {
@@ -157,16 +165,19 @@ final class HandlerCompiler
         return $this->normalizeStringMiddlewareDescriptor($entry);
     }
 
-    /** @return array{0:string,1:string}|string */
+    /**
+     * @return array{0:string,1:string}|string
+     * @throws \InvalidArgumentException
+     */
     private function normalizeStringHandler(string $handler): array|string
     {
         foreach (['::', '@'] as $separator) {
-            if (!str_contains($handler, $separator)) {
+            $position = strpos($handler, $separator);
+            if ($position === false) {
                 continue;
             }
-            [$class, $method] = explode($separator, $handler, 2);
-            $class = trim($class);
-            $method = trim($method);
+            $class = trim(substr($handler, 0, $position));
+            $method = trim(substr($handler, $position + strlen($separator)));
             if ($class === '' || $method === '' || !class_exists($class) || !method_exists($class, $method)) {
                 throw new InvalidArgumentException("Invalid route handler '{$handler}'.");
             }
@@ -184,14 +195,19 @@ final class HandlerCompiler
         throw new InvalidArgumentException("Route handler '{$handler}' is not resolvable at build time.");
     }
 
-    /** @return array{0:class-string,1:string}|string */
+    /**
+     * @return array{0:class-string,1:string}|string
+     * @throws \InvalidArgumentException
+     */
     private function normalizeStringMiddlewareDescriptor(string $entry): array|string
     {
         if (class_exists($entry) && method_exists($entry, '__invoke')) {
             return [$entry, '__invoke'];
         }
-        if (str_contains($entry, '::')) {
-            [$class, $method] = explode('::', $entry, 2);
+        $separator = strpos($entry, '::');
+        if ($separator !== false) {
+            $class = substr($entry, 0, $separator);
+            $method = substr($entry, $separator + 2);
             if ($class !== '' && $method !== '' && class_exists($class) && method_exists($class, $method)) {
                 /** @var class-string $class */
                 return [$class, $method];
@@ -214,17 +230,30 @@ final class HandlerCompiler
             return false;
         }
 
-        return is_a(Request::class, $type->getName(), true);
+        $name = $type->getName();
+        if (in_array($name, ['self', 'static', 'parent'], true)) {
+            return false;
+        }
+
+        return is_a(Request::class, $name, true);
     }
 
-    /** @param array{0:object|string,1:string}|string|callable $handler */
+    /**
+     * @param array{0:object|string,1:string}|string|callable $handler
+     * @throws \InvalidArgumentException
+     */
     private function reflect(array|string|callable $handler): ReflectionFunctionAbstract
     {
         if ($handler instanceof Closure) {
             return new ReflectionFunction($handler);
         }
         if (is_array($handler)) {
-            return new ReflectionMethod($handler[0], $handler[1]);
+            $target = $handler[0];
+            if (is_string($target) && !class_exists($target) && !interface_exists($target)) {
+                throw new InvalidArgumentException('Unable to inspect an unknown route handler class.');
+            }
+
+            return new ReflectionMethod($target, $handler[1]);
         }
         if (is_string($handler) && function_exists($handler)) {
             return new ReflectionFunction($handler);

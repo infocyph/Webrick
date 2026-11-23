@@ -36,6 +36,10 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
         return RunwireIntegration::registerInputs($builder);
     }
 
+    /**
+     * @throws \LogicException
+     */
+    #[\Override]
     public function withinScope(
         InterMixRuntime $runtime,
         ?Request $request,
@@ -75,10 +79,13 @@ final readonly class RunwireInterMixScopeBridge implements RuntimeScopeBridgeInt
             $this->requestContext,
             $this->coroutineScope,
             $invoke,
-            $request instanceof Request ? [Request::class => $request] : [],
+            $request instanceof Request && $runtime->has(Request::class) ? [Request::class => $request] : [],
         );
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function assertBorrowedScopeIdentity(RuntimeContainerInterface $container): void
     {
         try {

@@ -30,6 +30,10 @@ final readonly class ResponseWriterSupport
 
     /**
      * @phpstan-return Generator<int,string,void,void>
+     * @psalm-return Generator<int,string,mixed,null>
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public static function chunks(Response $response, int $chunkSize = 65_536): iterable
     {
@@ -74,6 +78,10 @@ final readonly class ResponseWriterSupport
     /** @return array<string,list<string>> */
     public static function headerMap(Response $response, bool $http2 = false): array
     {
+        if (!$http2 && !self::forbidsContentLength($response->getStatusCode())) {
+            return $response->getHeaders();
+        }
+
         $headers = [];
         foreach (self::headers($response, $http2) as [$name, $value]) {
             $headers[$name][] = $value;
@@ -104,6 +112,13 @@ final readonly class ResponseWriterSupport
         }
     }
 
+    /** A host may expose an unknown or malformed SERVER_PROTOCOL value. */
+    public static function isMultiplexedProtocol(mixed $protocol): bool
+    {
+        return is_string($protocol)
+            && (str_starts_with($protocol, 'HTTP/2') || str_starts_with($protocol, 'HTTP/3'));
+    }
+
     public static function knownLength(Response $response): ?int
     {
         if ($response->isStreaming() || self::statusHasNoContent($response->getStatusCode())) {
@@ -113,13 +128,39 @@ final readonly class ResponseWriterSupport
         return $response->getBodySize();
     }
 
+    /**
+     * Add a known body length only when transport-filtered headers do not already provide one.
+     *
+     * @param array<string,list<string>> $headers
+     * @return array<string,list<string>>
+     */
+    public static function withKnownLength(array $headers, ?int $length): array
+    {
+        if ($length === null) {
+            return $headers;
+        }
+        foreach ($headers as $name => $_) {
+            if (strcasecmp($name, 'Content-Length') === 0) {
+                return $headers;
+            }
+        }
+
+        $headers['Content-Length'] = [(string) $length];
+
+        return $headers;
+    }
+
     /** @phpstan-impure */
     private static function atEnd(\Infocyph\Webrick\Interfaces\BodyStream $body): bool
     {
         return $body->eof();
     }
 
-    /** @return Generator<int,string,void,void> */
+    /**
+     * @phpstan-return Generator<int,string,void,void>
+     * @psalm-return Generator<int,non-empty-string,mixed,null>
+     * @throws \RuntimeException
+     */
     private static function bodyChunks(\Infocyph\Webrick\Interfaces\BodyStream $body, int $chunkSize): Generator
     {
         if ($body->isSeekable()) {
@@ -146,7 +187,10 @@ final readonly class ResponseWriterSupport
             || $status === StatusEnum::NO_CONTENT->value;
     }
 
-    /** @return Generator<int,string,void,void> */
+    /**
+     * @return Generator<int,string,void,void>
+     * @throws \UnexpectedValueException
+     */
     private static function producerChunks(\Closure $producer): Generator
     {
         $chunks = $producer();

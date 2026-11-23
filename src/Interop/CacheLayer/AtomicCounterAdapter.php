@@ -12,6 +12,7 @@ final readonly class AtomicCounterAdapter implements AtomicCounterInterface
 {
     public function __construct(private AtomicCounterStoreInterface $store) {}
 
+    #[\Override]
     public function increment(string $key, int $delta, int $ttlSeconds): int
     {
         return $this->store->increment($key, $delta, $ttlSeconds)->value;

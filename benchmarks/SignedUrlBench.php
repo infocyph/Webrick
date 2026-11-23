@@ -13,26 +13,46 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class SignedUrlBench
 {
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function benchAbsoluteSign(): void
     {
         BenchmarkSupport::generateAbsoluteSignedUrl();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function benchAbsoluteUntil(): void
     {
         BenchmarkSupport::generateAbsoluteUntilUrl();
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public function benchAbsoluteVerify(): void
     {
         BenchmarkSupport::verifyAbsoluteSignedUrl();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public function benchRelativeSign(): void
     {
         BenchmarkSupport::generateRelativeTemporaryUrl();
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public function benchRelativeVerify(): void
     {
         BenchmarkSupport::verifyRelativeSignedUrl();

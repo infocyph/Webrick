@@ -99,9 +99,12 @@ describe('Deep correctness batch A', function () {
         $request = Request::fake(headers: ['X-Request-Id' => str_repeat('a', 129)]);
         $id = TelemetrySupport::deriveRequestId($request, true, 'X-Request-Id', true);
 
+        if ($id === null) {
+            throw new RuntimeException('Expected a regenerated request ID.');
+        }
+
         expect($id)->not->toBe(str_repeat('a', 129))
-            ->and($id)->not->toBeNull()
-            ->and(strlen((string) $id))->toBeLessThanOrEqual(128);
+            ->and(strlen($id))->toBeLessThanOrEqual(128);
     });
 
     it('rejects noncanonical signed URL numeric configuration', function () {
@@ -128,8 +131,15 @@ describe('Deep correctness batch A', function () {
         );
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $query['utm_source'] = 'campaign-b';
+        $validatedQuery = [];
+        foreach ($query as $name => $value) {
+            if (!is_string($name) || !is_string($value)) {
+                throw new UnexpectedValueException('Signed URL test requires scalar query parameters.');
+            }
+            $validatedQuery[$name] = $value;
+        }
 
-        $request = Request::fake(query: $query, uri: '/signed');
+        $request = Request::fake(query: $validatedQuery, uri: '/signed');
         $middleware = new VerifySignedUrlMiddleware($config);
         $response = $middleware($request, static fn (): Response => Response::create('ok'));
 

@@ -8,6 +8,7 @@ trait MatcherCacheLifecycleTrait
 {
     /**
      * @return array<string, array{0:string,1:?string}>
+     * @throws \RuntimeException
      */
     public function aliasIndex(): array
     {
@@ -37,7 +38,10 @@ trait MatcherCacheLifecycleTrait
         return $this;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \RuntimeException
+     */
     public function middlewareRequirements(): array
     {
         $this->ensureCacheLoaded();
@@ -45,6 +49,9 @@ trait MatcherCacheLifecycleTrait
         return matcher_normalize_middleware_requirements(\array_keys($this->middlewareRequirements));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function ensureCacheLoaded(): void
     {
         if ($this->cacheEnabled && !$this->cacheLoaded && \is_file($this->cacheFile)) {

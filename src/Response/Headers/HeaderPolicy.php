@@ -69,6 +69,10 @@ final class HeaderPolicy
         return implode(', ', $out);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function register(string $header, int $policy): void
     {
         if (self::$frozen) {
@@ -84,6 +88,9 @@ final class HeaderPolicy
         self::$map[strtolower($header)] = $policy;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function canonicalHeaderToken(string $token): string
     {
         if ($token !== '*' && preg_match(self::FIELD_NAME_RX, $token) !== 1) {
@@ -93,6 +100,9 @@ final class HeaderPolicy
         return $token === '*' ? '*' : implode('-', array_map(ucfirst(...), explode('-', strtolower($token))));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function canonicalMethodToken(string $token): string
     {
         if (preg_match(self::FIELD_NAME_RX, $token) !== 1) {

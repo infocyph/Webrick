@@ -49,26 +49,42 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
     /** @var array<string,true> */
     private array $middlewareRequirements = [];
 
+    private function __construct()
+    {
+        $this->engine = new CompiledMatcherEngine();
+        $this->fastEngine = new CompiledMatcherFastEngine();
+        $this->index = new CanonicalMatcherIndex();
+    }
+
+    /**
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
+    #[\Override]
     public function add(CompiledRoute $route): void
     {
         if ($this->finalized) {
             throw new \LogicException('Cannot add routes after finalize().');
         }
 
-        $this->bootIndex();
         $host = $this->canonicalRouteHost($route->getDomain());
         $this->index->add($host, $route);
         matcher_capture_route_alias($this->alias, $route);
         matcher_capture_middleware_requirements($this->middlewareRequirements, $route);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function finalize(): void
     {
         if ($this->finalized) {
             return;
         }
 
-        $this->bootEngines();
         if ($this->canBootFromCache()) {
             $this->loadCacheBlob();
             $this->selectFastDefaultGroup();
@@ -77,7 +93,6 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
             return;
         }
 
-        $this->bootIndex();
         if ($this->cacheEnabled && $this->cacheWriteEnabled && !$this->index->isEmpty()) {
             $this->dumpCache();
         }
@@ -89,6 +104,14 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         $this->finalized = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \RuntimeException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function match(string $method, string $host, string $path): array
     {
         $verb = HttpMethodEnum::normalize($method);
@@ -108,6 +131,10 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         throw new RouteNotFoundException($verb, $path);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
+    #[\Override]
     public function matchCompiled(string $method, string $host, string $path): int|array|MatchOutcome
     {
         if ($this->fastDefaultGroup !== null) {
@@ -124,6 +151,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    #[\Override]
     public function matchOutcome(string $method, string $host, string $path): MatchOutcome
     {
         $this->finalize();
@@ -137,24 +170,15 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         );
     }
 
-    /** @return array{string,string|null}|null */
+    /**
+     * @return array{0:string,1:?string}|null
+     * @throws \RuntimeException
+     */
     public function resolveAlias(string $name): ?array
     {
         $index = $this->aliasIndex();
 
         return $index[$name] ?? null;
-    }
-
-    private function bootEngines(): void
-    {
-        $this->engine ??= new CompiledMatcherEngine();
-        $this->fastEngine ??= new CompiledMatcherFastEngine();
-    }
-
-    private function bootIndex(): void
-    {
-        $this->index ??= new CanonicalMatcherIndex();
-        $this->bootEngines();
     }
 
     /**
@@ -167,7 +191,12 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return hash('xxh128', serialize([$hosts, $alias, $middleware]));
     }
 
-    /** @return array<string,MatcherGroup> */
+    /**
+     * @return array<string,MatcherGroup>
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     * @throws \LogicException
+     */
     private function compileHosts(): array
     {
         $compiled = new CompiledMatcherIndexCompiler()->compile($this->index->hosts());
@@ -176,6 +205,11 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         return CompactMatcherIndexValidator::validateHosts($compact);
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private function dumpCache(): void
     {
         $dir = dirname($this->cacheFile);
@@ -222,10 +256,16 @@ final class FusedMatcher extends AbstractMatcher implements MatcherInterface
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function loadCacheBlob(): void
     {
         if ($this->cacheLoaded) {
             return;
+        }
+        if (!is_file($this->cacheFile)) {
+            throw new \RuntimeException('Fused route cache is missing. Rebuild the route cache.');
         }
 
         /** @var array<string,mixed> $blob */

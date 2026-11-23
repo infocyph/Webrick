@@ -35,9 +35,9 @@ test('invalid encryption and signing configuration redacts secrets from exceptio
     $previous = ini_set('zend.exception_ignore_args', '0');
     try {
         foreach ([
-            static fn() => new CookieEncryptionMiddleware('test-secret-invalid-length'),
-            static fn() => new SignedUrlConfig(generationKey: 'test-secret-signing', algorithm: 'unsupported'),
-            static fn() => UrlGenerator::makeSignature('payload', 'test-secret-signing', 'unsupported'),
+            static fn(): CookieEncryptionMiddleware => new CookieEncryptionMiddleware('test-secret-invalid-length'),
+            static fn(): SignedUrlConfig => new SignedUrlConfig(generationKey: 'test-secret-signing', algorithm: 'unsupported'),
+            static fn(): string => UrlGenerator::makeSignature('payload', 'test-secret-signing', 'unsupported'),
         ] as $operation) {
             try {
                 $operation();
@@ -87,8 +87,10 @@ test('Forwarded host rejects quoted value suffixes and duplicate parameters', fu
 
 test('CORS marks every active origin variant for shared caches', function (array $headers): void {
     $middleware = new CorsMiddleware(origins: ['https://allowed.test']);
+    $validatedHeaders = webrickTestHeaders($headers);
+
     $response = $middleware(
-        Request::fake(headers: $headers),
+        Request::fake(headers: $validatedHeaders),
         static fn(): Response => Response::create('public')->withHeader('Vary', 'Accept'),
     );
 
@@ -129,22 +131,30 @@ test('response cache treats incomplete payloads as misses', function (): void {
 
 test('multiplexed SAPI responses exclude connection-specific fields', function (string $protocol): void {
     $emitter = new class extends BaseEmitter {
+        /** @var array<string,string> */
         public array $headers = [];
 
-        public string $protocol;
+        public string $protocol = 'HTTP/1.1';
 
+        #[\Override]
         protected function finish(): void {}
 
+        #[\Override]
         protected function headersAlreadySent(): bool { return false; }
 
+        #[\Override]
         protected function removePoweredByHeader(): void {}
 
+        #[\Override]
         protected function sendRawHeader(string $name, string $value): void { $this->headers[$name] = $value; }
 
+        #[\Override]
         protected function setStatusCode(int $code): void {}
 
+        #[\Override]
         protected function serverProtocol(): string { return $this->protocol; }
 
+        #[\Override]
         protected function write(string $chunk): void {}
     };
     $emitter->protocol = $protocol;
@@ -252,7 +262,11 @@ test('unsigned HTTP decimals accept leading zeroes without admitting overflow', 
 test('late Vary requirements cannot store a tenant response under an unvaried key', function (bool $responseVary): void {
     $middleware = new ResponseCacheMiddleware(\Infocyph\CacheLayer\Cache\Cache::memory('patch-late-vary-' . (int) $responseVary));
     $next = static function (Request $request) use ($responseVary): Response {
-        $request->getAttribute(VaryContext::ATTRIBUTE)->add('X-Tenant');
+        $vary = $request->getAttribute(VaryContext::ATTRIBUTE);
+        if (!$vary instanceof VaryContext) {
+            throw new UnexpectedValueException('Tenant Vary context is missing.');
+        }
+        $vary->add('X-Tenant');
         $response = Response::create($request->getHeaderLine('X-Tenant'));
 
         return $responseVary ? $response->withHeader('Vary', 'X-Tenant') : $response;

@@ -11,7 +11,9 @@ use Infocyph\Webrick\Request\Http\RequestHeaders;
 use Infocyph\Webrick\Support\HttpUtils;
 use InvalidArgumentException;
 
-/** Native Webrick server-request model. */
+/**
+ * Native Webrick server-request model.
+ */
 class ServerRequest extends Message
 {
     private const array VALID = [
@@ -74,6 +76,7 @@ class ServerRequest extends Message
      * @param array<array-key,mixed> $files
      * @param array<array-key,mixed>|null $query
      * @param array<array-key,mixed> $cookies
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         string $method,
@@ -102,7 +105,8 @@ class ServerRequest extends Message
         }
     }
 
-    protected function __clone(): void
+    #[\Override]
+    protected function __clone()
     {
         parent::__clone();
         $this->headersFacade = null;
@@ -114,8 +118,9 @@ class ServerRequest extends Message
     public function __get(string $key): mixed
     {
         $this->buildVariableMap();
-        if (array_key_exists($key, $this->variableMap ?? [])) {
-            return $this->variableMap[$key];
+        $variables = $this->variableMap ?? [];
+        if (array_key_exists($key, $variables)) {
+            return $variables[$key];
         }
         if ($this->checkEnv && ($value = getenv($key)) !== false) {
             return $this->variableMap[$key] = $value;
@@ -129,11 +134,18 @@ class ServerRequest extends Message
         return $this->__get($key) !== null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __set(string $name, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public static function createFromGlobals(): self
     {
         $server = self::stringMap($_SERVER);
@@ -184,6 +196,9 @@ class ServerRequest extends Message
         return self::$methodParamOverride;
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function setMethodParamOverride(bool $enabled): void
     {
         if (self::$methodOverrideConfigurationFrozen) {
@@ -200,6 +215,7 @@ class ServerRequest extends Message
         );
     }
 
+    /** @throws \InvalidArgumentException */
     public function expectsXml(): bool
     {
         return array_any(
@@ -307,7 +323,10 @@ class ServerRequest extends Message
     /** @return array<string,UploadedFile|array<array-key,mixed>> */
     public function getUploadedFiles(): array
     {
-        return $this->filesHydrated ??= UploadedFilesNormalizer::normalise($this->filesSpec);
+        // Resolve inherited private storage in its declaring lexical scope.
+        return $this->filesHydrated ??= UploadedFilesNormalizer::normalise(
+            (static fn(self $request): array => $request->filesSpec)($this),
+        );
     }
 
     public function getUploadedFilesCollection(): UploadedFileCollection
@@ -370,6 +389,9 @@ class ServerRequest extends Message
         return $clone;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withMethod(string $method): static
     {
         $clone = clone $this;
@@ -410,6 +432,9 @@ class ServerRequest extends Message
         return $clone;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function withRequestTarget(string $requestTarget): static
     {
         $requestTarget = self::validateRequestTarget($requestTarget)
@@ -478,6 +503,9 @@ class ServerRequest extends Message
         return $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function validateRequestTarget(?string $requestTarget): ?string
     {
         if ($requestTarget === null) {
@@ -528,6 +556,9 @@ class ServerRequest extends Message
             && HttpUtils::isFormContentType($this->getHeaderLine('Content-Type'));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function methodOverride(): ?string
     {
         $header = $this->getHeaderLine('X-HTTP-Method-Override') ?: $this->getHeaderLine('HTTP-Method-Override');

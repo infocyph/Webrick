@@ -22,6 +22,9 @@ final readonly class RuntimeServer
         return $this->adapter->capabilities();
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function handle(mixed $nativeRequest = null, mixed $nativeResponse = null): Response
     {
         $context = $this->adapter->context(

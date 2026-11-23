@@ -122,6 +122,37 @@ Generate matcher cache into the release/staging location, validate it, then acti
 
 For ``sharded`` mode, the cache path is a directory and the returned artifact is its ``__manifest.php``. Fused/generated modes return the generated cache file path.
 
+Compiled artifact trust boundary
+--------------------------------
+
+Compiled route and DI artifacts are executable PHP. Deploy them only from a
+trusted, immutable release directory owned by the deployment operator; runtime
+workers should not have permission to rewrite those files or the manifest.
+Build and activate artifacts atomically, then drain old workers before deleting
+an active generation.
+
+``ReleaseCompiler`` writes SHA-256 byte digests of both the compiled InterMix
+artifact and the Webrick router artifact to its coordinated release manifest.
+``ReleaseArtifactLoader`` checks those digests before the PHP artifacts are
+loaded. This prevents a modified artifact from being executed when its trusted
+release manifest is still intact. Protect the manifest and its deployment
+directory as part of the same release: the manifest is **not** signed, and
+``release_fingerprint`` is a consistency fingerprint, not a MAC.
+
+For compatibility, older manifests without ``source_sha256`` use their
+``xxh128`` digest. Likewise, standalone ``RouterArtifactLoader`` validates
+a sidecar ``xxh128`` checksum. These checks detect accidental change but
+**do not authenticate untrusted PHP** if an adversary can also update the
+manifest or sidecar. Do not load untrusted shared-cache directories or other
+tenant-writable PHP. The release manifest must come from a trusted build and
+activation process; externally provided filenames, user content and remote
+URLs are never authority to load executable PHP.
+
+Rewriting artifact bytes between digest verification and ``require`` is
+outside Webrick's application-level integrity guarantee. Filesystem
+ownership, immutable generations, and worker restart on deployment close
+that operational gap.
+
 Production release
 ------------------
 

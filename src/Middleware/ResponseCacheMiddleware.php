@@ -25,7 +25,10 @@ final readonly class ResponseCacheMiddleware
 
     private CacheItemPoolInterface $store;
 
-    /** @param list<mixed> $defaultVary */
+    /**
+     * @param list<mixed> $defaultVary
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         ?CacheItemPoolInterface $store = null,
         private int $ttlSeconds = 10,
@@ -50,7 +53,11 @@ final readonly class ResponseCacheMiddleware
         $this->policy = $policy ?? new CachePolicy();
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -97,6 +104,9 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function head(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -109,6 +119,9 @@ final readonly class ResponseCacheMiddleware
         return $response->withBody('');
     }
 
+    /**
+     * @throws \LogicException
+     */
     private function buildDefaultStore(): CacheItemPoolInterface
     {
         if (!class_exists(Cache::class)) {
@@ -135,7 +148,10 @@ final readonly class ResponseCacheMiddleware
         ));
     }
 
-    /** @param array<string,string> $varyPairs */
+    /**
+     * @param array<string,string> $varyPairs
+     * @throws \InvalidArgumentException
+     */
     private function hasSafeVary(Response $response, array $varyPairs): bool
     {
         $vary = $response->getHeaderLine('Vary');
@@ -154,6 +170,9 @@ final readonly class ResponseCacheMiddleware
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function invokeNext(Closure $next, Request $req): Response
     {
         $response = $next($req);
@@ -218,7 +237,10 @@ final readonly class ResponseCacheMiddleware
         }
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     private function resolveVaryPairs(Request $req): array
     {
         $explicit = self::explicitVaryPairs($req->getAttribute('vary.pairs'));
@@ -243,7 +265,10 @@ final readonly class ResponseCacheMiddleware
         return $pairs;
     }
 
-    /** @param array<string,string> $varyPairs */
+    /**
+     * @param array<string,string> $varyPairs
+     * @throws \InvalidArgumentException
+     */
     private function storeTtl(Request $request, Response $response, array $varyPairs): int
     {
         if ($response->isStreaming() || $response->getStringBody() === null) {

@@ -30,6 +30,8 @@ use Throwable;
  * creates/selects a container, imports providers, infers an environment, or
  * boots from production route-cache artifacts. Compiled production traffic is
  * handled by CompiledRouterKernel.
+ *
+ * @api
  */
 final readonly class RouterKernel
 {
@@ -45,6 +47,9 @@ final readonly class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function __construct(
         private LoggerInterface $log,
@@ -59,7 +64,7 @@ final readonly class RouterKernel
         private ?Closure $bindUrlServices = null,
         private array $preGlobalTags = ['webrick.middleware.pre'],
         private array $postGlobalTags = ['webrick.middleware.post'],
-        private bool $debug = false,
+        bool $debug = false,
         private ?PreRoutingGateInterface $preRoutingGate = null,
     ) {
         $this->warm();
@@ -72,7 +77,7 @@ final readonly class RouterKernel
         );
         $this->errorHandler = $errorHandler ?? new ErrorHandler(
             logger: $this->log,
-            debug: $this->debug,
+            debug: $debug,
             requestIdHeader: 'X-Request-Id',
         );
     }
@@ -88,6 +93,9 @@ final readonly class RouterKernel
      * @param array<int,mixed> $postGlobal
      * @param array<int,string> $preGlobalTags
      * @param array<int,string> $postGlobalTags
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function bootWithRegistrar(
         LoggerInterface $log,
@@ -123,6 +131,10 @@ final readonly class RouterKernel
         );
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function handle(?Request $request = null): Response
     {
         $request ??= Request::fromGlobals();
@@ -158,9 +170,14 @@ final readonly class RouterKernel
             throw new \RuntimeException('Request scope callback must return Response.');
         }
 
-        return $result;
+        return $request->getMethod() === HttpMethodEnum::HEAD->value
+            ? self::headResponse($result)
+            : $result;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function headResponse(Response $response): Response
     {
         if (!$response->hasHeader('Content-Length')) {
@@ -173,6 +190,9 @@ final readonly class RouterKernel
         return $response->withBody('');
     }
 
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
     private static function normaliseHost(string $raw): string
     {
         if ($raw === '' || preg_match('/[\x00-\x20]/', $raw)) {
@@ -180,7 +200,7 @@ final readonly class RouterKernel
         }
 
         $host = strtolower(rtrim($raw, '.'));
-        if (function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
+        if ($host !== '' && function_exists('idn_to_ascii') && !str_contains($host, 'xn--')) {
             $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
             if ($ascii === false) {
                 throw HttpException::badRequest('Invalid IDN host name.');
@@ -194,6 +214,9 @@ final readonly class RouterKernel
         return $host;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function routingMethod(Request $req): string
     {
         $rawMethod = HttpMethodEnum::normalize($req->getMethod());
@@ -204,7 +227,11 @@ final readonly class RouterKernel
             : $effectiveMethod;
     }
 
-    /** @param array<int,string> $allowed */
+    /**
+     * @param array<int,string> $allowed
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function automaticOptionsResponse(array $allowed): Response
     {
         $methods = [];
@@ -222,6 +249,11 @@ final readonly class RouterKernel
         return Response::noContent(['Allow' => implode(', ', array_keys($methods))]);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function evaluatePreRoutingGate(Request $request, PreRoutingGateInterface $gate): ?Response
     {
         try {
@@ -240,7 +272,7 @@ final readonly class RouterKernel
     }
 
     /**
-     * @return Closure(Request, Closure(Request):Response):Response
+     * @return Closure(Request, Closure(Request):mixed):Response
      */
     private function lazyTaggedMiddleware(string $tag): Closure
     {
@@ -281,6 +313,10 @@ final readonly class RouterKernel
 
     /**
      * @return array{0:CompiledRoute,1:array<string,mixed>}
+     * @throws \RuntimeException
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     * @throws \InvalidArgumentException
      */
     private function matchRoute(Request $req): array
     {
@@ -373,6 +409,11 @@ final readonly class RouterKernel
         ];
     }
 
+    /**
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     private function warm(): void
     {
         $routes = new Collection();

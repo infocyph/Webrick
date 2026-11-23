@@ -44,16 +44,19 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
 
     public function __construct(private readonly string $body) {}
 
+    #[\Override]
     public function bufferedBytes(): int
     {
         return strlen($this->body) - $this->offset;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return $this->offset >= strlen($this->body);
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         if (!$this->eof()) {
@@ -63,6 +66,7 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -70,6 +74,10 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         ++$this->readCalls;
@@ -86,12 +94,14 @@ final class RunwireMultiplexedBodyFixture implements RequestBodyInterface
         return $chunk;
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return strlen($this->body);
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -121,6 +131,7 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
         $this->headers = new Headers();
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($this->ended) {
@@ -137,16 +148,19 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         Closure::fromCallable($callback);
@@ -154,6 +168,7 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         if ($this->ended) {
@@ -171,6 +186,7 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         if ($this->ended) {
@@ -188,6 +204,12 @@ final class RunwireMultiplexedWriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireMultiplexedProtocolIsolationTest extends TestCase
 {
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testHttp2InterleavedRequestsRemainIsolatedWhenOneStreamIsCancelled(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -232,6 +254,13 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\ApplicationStartupException
+     * @throws \LogicException
+     * @throws \OverflowException
+     * @throws \Throwable
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     */
     public function testHttp3InterleavedStreamsRemainIsolatedAndQuicAbsenceIsNonFatal(): void
     {
         [$application, $paths] = self::applicationFixture();
@@ -269,7 +298,11 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -284,7 +317,7 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
                     return Response::stream(
                         static function () use ($label, $payload): iterable {
                             yield 'begin:' . $payload;
-                            Fiber::suspend('paused:' . $label);
+                            expect(Fiber::suspend('paused:' . $label))->toBeNull();
                             yield 'end:' . $payload;
                         },
                         status: 207,
@@ -349,6 +382,9 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         ], $writer->headers->all('set-cookie'));
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\RuntimeUnavailableException
+     */
     private static function assertQuicCapabilityIsPortable(): void
     {
         if (PhpQuicApi::available()) {
@@ -375,7 +411,10 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -410,21 +449,35 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         ];
     }
 
-    /** @return array<string,string|list<string>> */
+    /** @throws \UnexpectedValueException */
+    private static function checkedScalar(mixed $value, string $name): string
+    {
+        if (!is_string($value)) {
+            throw new \UnexpectedValueException("Expected string {$name} in multiplexed request.");
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return array<string,string|list<string>>
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     private static function payload(Request $request, string $label): array
     {
         return [
             'label' => $label,
             'method' => $request->getMethod(),
-            'query' => (string) $request->query('q'),
-            'cookie' => (string) $request->cookie('sid'),
+            'query' => self::checkedScalar($request->query('q'), 'query'),
+            'cookie' => self::checkedScalar($request->cookie('sid'), 'cookie'),
             'repeat' => $request->getHeader('X-Repeat'),
             'body' => (string) $request->getBody(),
             'protocol' => $request->getProtocolVersion(),
             'scheme' => $request->getUri()->getScheme(),
             'host' => $request->getUri()->getHost(),
-            'remote' => (string) $request->server('REMOTE_ADDR'),
-            'local' => (string) $request->server('SERVER_ADDR'),
+            'remote' => self::checkedScalar($request->server('REMOTE_ADDR'), 'server'),
+            'local' => self::checkedScalar($request->server('SERVER_ADDR'), 'server'),
         ];
     }
 
@@ -433,7 +486,11 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return '127.0.0.' . (str_ends_with($label, '-a') ? '11' : '12');
     }
 
-    /** @return array{HttpRequest,RunwireMultiplexedBodyFixture} */
+    /**
+     * @return array{HttpRequest,RunwireMultiplexedBodyFixture}
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(ProtocolVersion $version, string $label): array
     {
         $body = new RunwireMultiplexedBodyFixture('body-' . $label);
@@ -456,6 +513,11 @@ final class RunwireMultiplexedProtocolIsolationTest extends TestCase
         return [$request, $body];
     }
 
+    /**
+     * @return Fiber
+     * @psalm-return Fiber[impure]
+     * @phpstan-return Fiber<mixed,mixed,mixed,mixed>
+     */
     private static function fiber(
         RunwireRuntimeApplication $application,
         HttpRequest $request,

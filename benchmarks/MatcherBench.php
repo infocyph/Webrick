@@ -13,11 +13,16 @@ use PhpBench\Attributes as Bench;
 #[Bench\Warmup(1)]
 final class MatcherBench
 {
+    /**
+     * @param array{matcher:string,route_set:string,method:string,host:string,path:string} $params
+     * @throws \Infocyph\Webrick\Exceptions\RouteNotFoundException
+     * @throws \Infocyph\Webrick\Exceptions\MethodNotAllowedException
+     */
     #[Bench\ParamProviders('provideMatchCases')]
     public function benchMatch(array $params): void
     {
-        BenchmarkSupport::matcher((string) $params['route_set'], (string) $params['matcher'])
-            ->match((string) $params['method'], (string) $params['host'], (string) $params['path']);
+        BenchmarkSupport::matcher($params['route_set'], $params['matcher'])
+            ->match($params['method'], $params['host'], $params['path']);
     }
 
     /**

@@ -33,6 +33,9 @@ final readonly class ReleaseCompiler
         return hash('xxh128', $encoded);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public static function runtimeManifestPath(string $releaseManifestPath): string
     {
         $path = trim($releaseManifestPath);
@@ -58,6 +61,9 @@ final readonly class ReleaseCompiler
      * @param list<string> $postGlobalTags
      * @param null|Closure(ContainerBuilder,RouterBuildResult):void $enrichGraph
      * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public function compile(
         ContainerBuilder $builder,
@@ -92,8 +98,45 @@ final readonly class ReleaseCompiler
         }
 
         $builder->validate(strict: true);
+        // The finalized InterMix graph is the authority for compiled tag presence.
+        // Resolve no services: request-scoped middleware must stay request-scoped.
+        $activeTags = [];
+        foreach ($builder->definitionGraph()->definitionMeta() as $meta) {
+            foreach ($meta['tags'] as $tag) {
+                $activeTags[$tag] = true;
+            }
+        }
+        $preTags = array_values(array_filter(
+            $routerBuild->preGlobalTags,
+            static fn(string $tag): bool => isset($activeTags[$tag]),
+        ));
+        $postTags = array_values(array_filter(
+            $routerBuild->postGlobalTags,
+            static fn(string $tag): bool => isset($activeTags[$tag]),
+        ));
+        if ($preTags !== $routerBuild->preGlobalTags || $postTags !== $routerBuild->postGlobalTags) {
+            $routerBuild = new RouterBuildResult(
+                routes: $routerBuild->routes,
+                plans: $routerBuild->plans,
+                aliases: $routerBuild->aliases,
+                preGlobal: $routerBuild->preGlobal,
+                postGlobal: $routerBuild->postGlobal,
+                preGlobalTags: $preTags,
+                postGlobalTags: $postTags,
+                hasDomainRoutes: $routerBuild->hasDomainRoutes,
+                environment: $routerBuild->environment,
+                configFingerprint: $routerBuild->configFingerprint,
+            );
+        }
+
         $intermix = $builder->compile($intermixPath);
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
+
+        $intermixSourcePath = realpath($intermixPath);
+        $intermixSourceSha256 = $intermixSourcePath === false ? false : hash_file('sha256', $intermixSourcePath);
+        if (!is_string($intermixSourceSha256)) {
+            throw new RuntimeException('Unable to hash coordinated release executable artifacts.');
+        }
 
         $manifest = [
             'format' => self::RELEASE_FORMAT,
@@ -102,6 +145,7 @@ final readonly class ReleaseCompiler
             'intermix' => [
                 'path' => $intermixPath,
                 'digest' => $intermix['digest'],
+                'source_sha256' => $intermixSourceSha256,
                 'graph' => $intermix['graph'],
                 'build' => $intermix['build'],
                 'artifact' => basename($intermix['artifact']),
@@ -144,6 +188,9 @@ final readonly class ReleaseCompiler
         return $value;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function writeAtomic(string $path, string $contents): void
     {
         $directory = dirname($path);

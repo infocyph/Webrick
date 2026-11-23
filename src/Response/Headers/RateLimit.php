@@ -7,7 +7,10 @@ namespace Infocyph\Webrick\Response\Headers;
 /** Small value-object for legacy X-RateLimit response headers. */
 final class RateLimit
 {
-    /** @return array<int,array{string,string}> */
+    /**
+     * @return array<int,array{string,string}>
+     * @throws \InvalidArgumentException
+     */
     public static function forUser(int $limit, int $remaining, int $resetEpoch): array
     {
         if ($limit < 0 || $remaining < 0 || $resetEpoch < 0) {
@@ -24,7 +27,10 @@ final class RateLimit
         ];
     }
 
-    /** @return array{string,string} */
+    /**
+     * @return array{string,string}
+     * @throws \InvalidArgumentException
+     */
     public static function retryAfter(int $seconds): array
     {
         if ($seconds < 0) {

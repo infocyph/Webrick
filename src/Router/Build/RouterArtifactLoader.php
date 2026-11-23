@@ -10,12 +10,18 @@ use UnexpectedValueException;
 /** Production artifact loader with normal and trusted-prevalidated trust paths. */
 final class RouterArtifactLoader
 {
+    /**
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     */
     public function load(
         string $path,
         string $expectedEnvironment,
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
+        self::assertLocalArtifactPath($path);
         $meta = $this->readMeta($path);
         $digest = hash_file('xxh128', $path);
         if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
@@ -25,6 +31,11 @@ final class RouterArtifactLoader
         return $this->loadVerifiedPayload($path, $meta, $expectedEnvironment, $expectedConfigFingerprint);
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     public function loadPrevalidated(
         string $path,
         string $trustedArtifactFingerprint,
@@ -32,8 +43,26 @@ final class RouterArtifactLoader
         string $expectedConfigFingerprint,
     ): CompiledRouterArtifact {
         self::assertExpectedIdentity($expectedEnvironment, $expectedConfigFingerprint);
+        self::assertLocalArtifactPath($path);
         if (preg_match('/^[a-f0-9]{32}$/D', $trustedArtifactFingerprint) !== 1) {
             throw new UnexpectedValueException('Trusted Webrick artifact fingerprint must be a lowercase xxh128 digest.');
+        }
+
+        // A prevalidated payload is executable PHP. Reject altered source bytes
+        // before require; checking only the returned fingerprint would be too late.
+        $meta = $this->readMeta($path);
+        if (
+            $meta['environment'] !== $expectedEnvironment
+            || !hash_equals($expectedConfigFingerprint, $meta['config_fingerprint'])
+        ) {
+            throw new RuntimeException('Webrick router artifact identity mismatch.');
+        }
+        if (!hash_equals($trustedArtifactFingerprint, $meta['artifact_fingerprint'])) {
+            throw new RuntimeException('Trusted Webrick artifact fingerprint does not match the release manifest.');
+        }
+        $digest = hash_file('xxh128', $path);
+        if (!is_string($digest) || !hash_equals($meta['digest'], $digest)) {
+            throw new RuntimeException('Webrick router artifact digest mismatch.');
         }
 
         $payload = $this->requirePayload($path);
@@ -57,6 +86,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<string,array{0:string,1:string|null}>
+     * @throws \UnexpectedValueException
      */
     private static function aliasPayloads(array $payload, string $field): array
     {
@@ -80,6 +110,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<array-key,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function arrayField(array $payload, string $field): array
     {
@@ -91,7 +122,10 @@ final class RouterArtifactLoader
         return $value;
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     */
     private static function assertArtifactIdentity(CompiledRouterArtifact $artifact, array $meta): void
     {
         if (
@@ -103,6 +137,9 @@ final class RouterArtifactLoader
         }
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private static function assertExpectedIdentity(string $environment, string $configFingerprint): void
     {
         if (trim($environment) === '' || trim($configFingerprint) === '') {
@@ -110,7 +147,18 @@ final class RouterArtifactLoader
         }
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /** @throws \UnexpectedValueException */
+    private static function assertLocalArtifactPath(string $path): void
+    {
+        if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '//') || str_starts_with($path, '\\\\') || preg_match('~^[a-z][a-z0-9.+-]*://~i', $path) === 1) {
+            throw new UnexpectedValueException('Compiled Webrick router artifact must use a local filesystem path.');
+        }
+    }
+
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     */
     private static function assertMetaIdentity(
         array $meta,
         string $expectedEnvironment,
@@ -127,6 +175,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<int,array<string,mixed>>
+     * @throws \UnexpectedValueException
      */
     private static function indexedPlans(array $payload): array
     {
@@ -152,6 +201,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return array<int,mixed>
+     * @throws \UnexpectedValueException
      */
     private static function indexedRoutes(array $payload): array
     {
@@ -170,6 +220,7 @@ final class RouterArtifactLoader
     /**
      * @param array<string,mixed> $payload
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private static function stringListField(array $payload, string $field): array
     {
@@ -184,7 +235,10 @@ final class RouterArtifactLoader
         return $values;
     }
 
-    /** @param array<string,mixed> $payload */
+    /**
+     * @param array<string,mixed> $payload
+     * @throws \UnexpectedValueException
+     */
     private function calculatePayloadFingerprint(array $payload): string
     {
         $environment = $payload['environment'] ?? null;
@@ -208,7 +262,11 @@ final class RouterArtifactLoader
         );
     }
 
-    /** @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
+    /**
+     * @param array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     */
     private function loadVerifiedPayload(
         string $path,
         array $meta,
@@ -233,7 +291,11 @@ final class RouterArtifactLoader
         return $artifact;
     }
 
-    /** @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} */
+    /**
+     * @return array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string}
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function readMeta(string $path): array
     {
         $metaPath = $path . '.meta.json';
@@ -259,6 +321,7 @@ final class RouterArtifactLoader
             throw new UnexpectedValueException('Malformed Webrick router artifact metadata.');
         }
 
+        /** @var array{format:int,environment:string,config_fingerprint:string,artifact_fingerprint:string,digest:string} $meta */
         return [
             'format' => $meta['format'],
             'environment' => $meta['environment'],
@@ -268,7 +331,11 @@ final class RouterArtifactLoader
         ];
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     */
     private function requirePayload(string $path): array
     {
         if (!is_file($path)) {
@@ -285,6 +352,7 @@ final class RouterArtifactLoader
             }
         }
 
+        /** @var array<string,mixed> $payload */
         return $payload;
     }
 }

@@ -54,6 +54,9 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/api/lifecycle'));
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($response->hasHeader('X-Response-Time'))->toBeTrue()
@@ -88,6 +91,9 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/api/test'));
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($data['trace_id'])->not->toBeNull()
@@ -123,6 +129,9 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
             'traceparent' => "00-{$incomingTraceId}-{$incomingSpanId}-01",
         ]));
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($data['trace_id'])->toBe($incomingTraceId)
@@ -151,6 +160,13 @@ describe('TelemetryMiddleware - End-to-End Integration', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/api/request'));
         $data = json_decode((string) $response->getBody(), true);
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON response object.');
+        }
+
+        if (!is_string($data['trace_id'] ?? null)) {
+            throw new \UnexpectedValueException('Expected a string trace identifier.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($data['has_trace'])->toBeTrue()
@@ -177,7 +193,9 @@ describe('TelemetryMiddleware - Performance Timing', function () {
 
         $response = $kernel->handle(mockRequest('GET', '/api/slow'));
         $timing = $response->getHeaderLine('X-Response-Time');
-        preg_match('/^(\d+\.\d+)ms$/', $timing, $matches);
+        if (preg_match('/^(\d+\.\d+)ms$/', $timing, $matches) !== 1) {
+            throw new UnexpectedValueException('Expected a numeric response-time header.');
+        }
 
         expect($response->getStatusCode())->toBe(200)
             ->and($timing)->toMatch('/^\d+\.\d+ms$/')

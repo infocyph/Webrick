@@ -45,6 +45,17 @@ final class RunwireCleanupProbe
 
     public static int $scopeLeaves = 0;
 
+
+    public static function scopeLeaveCount(): int
+    {
+        return self::$scopeLeaves;
+    }
+
+    public static function cleanupCallCount(): int
+    {
+        return self::$cleanupCalls;
+    }
+
     public static function reset(): void
     {
         self::$cleanupCalls = 0;
@@ -54,16 +65,19 @@ final class RunwireCleanupProbe
 
 final class RunwireCleanupBodyFixture implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -71,6 +85,7 @@ final class RunwireCleanupBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         Closure::fromCallable($callback)($this);
@@ -78,6 +93,7 @@ final class RunwireCleanupBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -85,12 +101,14 @@ final class RunwireCleanupBodyFixture implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -120,6 +138,7 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
         $this->afterFirstWrite = $afterFirstWrite === null ? null : Closure::fromCallable($afterFirstWrite);
     }
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         if ($finalChunk !== '') {
@@ -132,16 +151,19 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, strlen($finalChunk));
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -149,6 +171,7 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -158,6 +181,7 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         $this->chunks[] = $chunk;
@@ -174,11 +198,18 @@ final class RunwireCleanupWriterFixture implements ResponseWriterInterface
 #[ExcludeStaticPropertyFromBackup(CodeStream::class, 'handlers')]
 final class RunwireCleanupIsolationTest extends TestCase
 {
+    #[\Override]
     protected function tearDown(): void
     {
         RunwireCleanupProbe::reset();
     }
 
+    /**
+     * @throws \Infocyph\Runwire\Exception\CancelledException
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     * @throws \Throwable
+     */
     public function testCleanupAndCarrierResetAreExactlyOnceAcrossRequestOutcomes(): void
     {
         [$application, $container, $paths] = self::applicationFixture();
@@ -187,8 +218,8 @@ final class RunwireCleanupIsolationTest extends TestCase
             $success = self::request('/cleanup/success');
             $successWriter = new RunwireCleanupWriterFixture();
             $application->handle($success, $successWriter, completeResponse: true);
-            self::assertSame(1, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(1, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(1, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(1, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($success->context->completed());
             self::assertSame(1, $successWriter->endCalls);
             self::assertCarrierClean($container);
@@ -196,19 +227,21 @@ final class RunwireCleanupIsolationTest extends TestCase
             $error = self::request('/cleanup/error');
             $errorWriter = new RunwireCleanupWriterFixture();
             $application->handle($error, $errorWriter, completeResponse: true);
-            self::assertSame(2, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(2, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(2, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(2, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($error->context->completed());
             self::assertSame(1, $errorWriter->endCalls);
             self::assertCarrierClean($container);
 
             $cancelled = self::request('/cleanup/stream');
             $cancelWriter = new RunwireCleanupWriterFixture(
-                static fn() => $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED),
+                static function () use ($cancelled): void {
+                    $cancelled->context->cancel(CancellationReason::TRANSPORT_CANCELLED);
+                },
             );
             $application->handle($cancelled, $cancelWriter, completeResponse: true);
-            self::assertSame(3, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(3, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(3, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(3, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($cancelled->context->completed());
             self::assertSame(CancellationReason::TRANSPORT_CANCELLED, $cancelled->context->cancellation->reason());
             self::assertSame(0, $cancelWriter->endCalls);
@@ -217,8 +250,8 @@ final class RunwireCleanupIsolationTest extends TestCase
             $deadline = self::request('/cleanup/deadline');
             $deadlineWriter = new RunwireCleanupWriterFixture();
             $application->handle($deadline, $deadlineWriter, completeResponse: true);
-            self::assertSame(4, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(4, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(4, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(4, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($deadline->context->completed());
             self::assertSame(CancellationReason::DEADLINE_EXCEEDED, $deadline->context->cancellation->reason());
             self::assertSame(0, $deadlineWriter->endCalls);
@@ -226,8 +259,8 @@ final class RunwireCleanupIsolationTest extends TestCase
 
             $next = self::request('/cleanup/success');
             $application->handle($next, new RunwireCleanupWriterFixture(), completeResponse: true);
-            self::assertSame(5, RunwireCleanupProbe::$scopeLeaves);
-            self::assertSame(5, RunwireCleanupProbe::$cleanupCalls);
+            self::assertSame(5, RunwireCleanupProbe::scopeLeaveCount());
+            self::assertSame(5, RunwireCleanupProbe::cleanupCallCount());
             self::assertTrue($next->context->completed());
             self::assertCarrierClean($container);
             self::assertSame(0, $application->snapshot()->requestsActive);
@@ -237,7 +270,11 @@ final class RunwireCleanupIsolationTest extends TestCase
         }
     }
 
-    /** @return array{RunwireRuntimeApplication,\Infocyph\InterMix\DI\ProductionContainer,list<string>} */
+    /**
+     * @return array{RunwireRuntimeApplication,\Infocyph\InterMix\DI\ProductionContainer,list<string>}
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
     private static function applicationFixture(): array
     {
         [$intermixPath, $routerPath] = self::artifactPaths();
@@ -331,7 +368,7 @@ final class RunwireCleanupIsolationTest extends TestCase
             $container->captureScopeContext();
             self::fail('No InterMix scope may survive request cleanup on the current execution carrier.');
         } catch (ContainerException) {
-            self::assertTrue(true);
+            // The expected exception verifies that no request scope survives cleanup.
         }
     }
 
@@ -343,7 +380,10 @@ final class RunwireCleanupIsolationTest extends TestCase
         return [$base . '-intermix.php', $base . '-router.php'];
     }
 
-    /** @param list<string> $paths */
+    /**
+     * @param list<string> $paths
+     * @throws \RuntimeException
+     */
     private static function cleanup(array $paths): void
     {
         foreach ($paths as $path) {
@@ -355,6 +395,10 @@ final class RunwireCleanupIsolationTest extends TestCase
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \OverflowException
+     */
     private static function request(string $target): HttpRequest
     {
         return new HttpRequest(

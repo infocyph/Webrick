@@ -9,6 +9,13 @@ use Infocyph\Webrick\Response\Cookies\Cookie;
 use Infocyph\Webrick\Response\Cookies\CookieJar;
 use Infocyph\Webrick\Response\Response;
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \LengthException
+ * @throws \Psr\Cache\InvalidArgumentException
+ * @throws \Random\RandomException
+ * @throws \RuntimeException
+ */
 function encryptedCookieForTest(CookieEncryptionMiddleware $middleware, string $value, string $name = 'enc_session'): string
 {
     $response = $middleware(
@@ -22,6 +29,13 @@ function encryptedCookieForTest(CookieEncryptionMiddleware $middleware, string $
     return rawurldecode($matches[1] ?? '');
 }
 
+/**
+ * @throws \InvalidArgumentException
+ * @throws \LengthException
+ * @throws \Psr\Cache\InvalidArgumentException
+ * @throws \Random\RandomException
+ * @throws \RuntimeException
+ */
 function decryptedCookieForTest(
     CookieEncryptionMiddleware $middleware,
     string $cipher,
@@ -52,7 +66,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('encrypts outbound cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'secret_value'));
 
@@ -74,7 +88,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('decrypts inbound cookies', function () {
         // First, encrypt a cookie
         $request1 = mockRequest('GET', '/');
-        $next1 = function () {
+        $next1 = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'my_secret'));
 
@@ -85,6 +99,9 @@ describe('CookieEncryptionMiddleware', function () {
         // Extract encrypted cookie value
         $setCookie = $response1->getHeader('Set-Cookie')[0];
         preg_match('/enc_session=([^;]+)/', $setCookie, $matches);
+        if (!isset($matches[1])) {
+            throw new UnexpectedValueException('Encrypted fixture cookie was not set.');
+        }
         $encryptedValue = urldecode($matches[1]);
 
         // Now test decryption
@@ -92,7 +109,7 @@ describe('CookieEncryptionMiddleware', function () {
         $request2 = Request::fromGlobals();
 
         $decrypted = null;
-        $next2 = function ($req) use (&$decrypted) {
+        $next2 = function (Request $req) use (&$decrypted): Response {
             $decrypted = $req->cookie('enc_session');
 
             return Response::create('ok');
@@ -106,7 +123,7 @@ describe('CookieEncryptionMiddleware', function () {
     it('ignores non-prefixed cookies', function () {
         $request = mockRequest('GET', '/');
 
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('normal_session', 'plain_value'));
 
@@ -131,7 +148,7 @@ describe('CookieEncryptionMiddleware', function () {
         );
 
         $request = mockRequest('GET', '/');
-        $next = function () {
+        $next = function (): Response {
             $jar = new CookieJar;
             $jar = $jar->add(Cookie::make('enc_session', 'value'));
 
@@ -165,7 +182,9 @@ describe('CookieEncryptionMiddleware', function () {
     it('rejects modified authenticated frame fields', function (int $offset): void {
         $cipher = encryptedCookieForTest($this->middleware, 'authenticated-value');
         $raw = base64_decode($cipher, true);
-        expect($raw)->toBeString()->not->toBe('');
+        if (!is_string($raw) || $raw === '' || $offset < 0 || $offset >= strlen($raw)) {
+            throw new UnexpectedValueException('Authenticated cookie frame cannot be mutated at this offset.');
+        }
         $raw[$offset] = chr(ord($raw[$offset]) ^ 0x01);
 
         expect(decryptedCookieForTest($this->middleware, base64_encode($raw)))->toBeNull();
@@ -179,7 +198,11 @@ describe('CookieEncryptionMiddleware', function () {
     it('rejects malformed truncated unknown-key and cross-cookie payloads', function (Closure $mutate): void {
         $cipher = encryptedCookieForTest($this->middleware, 'secret');
 
-        expect(decryptedCookieForTest($this->middleware, $mutate($cipher)))->toBeNull();
+        $mutated = $mutate($cipher);
+        if (!is_string($mutated)) {
+            throw new UnexpectedValueException('Cookie mutation fixture must produce a string.');
+        }
+        expect(decryptedCookieForTest($this->middleware, $mutated))->toBeNull();
     })->with([
         'malformed base64' => static fn(string $cipher): string => '***' . $cipher,
         'truncated frame' => static fn(string $cipher): string => base64_encode(substr((string) base64_decode($cipher, true), 0, 20)),

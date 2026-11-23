@@ -8,7 +8,11 @@ use Infocyph\Webrick\Request\Request;
 use Infocyph\Webrick\Request\Support\IpCidr;
 use Infocyph\Webrick\Support\HttpUtils;
 
-/** Resolve the end-user address through an explicitly trusted proxy chain. */
+/**
+ * Resolve end-user addresses through an explicitly trusted proxy chain.
+ *
+ * @api
+ */
 final class EndUser
 {
     private ?string $cachedNoProxy = null;
@@ -48,7 +52,11 @@ final class EndUser
         return new self($request, $networks, $forwardedHeaderMask, $trustedClientIpHeaders);
     }
 
-    /** @param list<string> $cidrs */
+    /**
+     * @param list<string> $cidrs
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function setTrustedProxies(array $cidrs): void
     {
         Request::setTrustedProxies($cidrs);
@@ -62,6 +70,9 @@ final class EndUser
         return $wrapped ? '[' . $maskedIp . ']' : $maskedIp;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function ip(): ?string
     {
         $peer = $this->ipNoProxy();
@@ -86,6 +97,7 @@ final class EndUser
         return $this->cachedNoProxy = is_string($validated) ? $validated : null;
     }
 
+    /** @throws \InvalidArgumentException */
     public function ipViaProxy(): ?string
     {
         if ($this->cachedViaProxy !== null) {
@@ -115,7 +127,10 @@ final class EndUser
         return $this->cachedViaProxy = $candidate;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     public function parseUserAgent(): array
     {
         $parsed = new UAParser($this->req)->parse();
@@ -127,6 +142,9 @@ final class EndUser
         return $out;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function userAgent(): ?string
     {
         return $this->req->getHeaderLine('User-Agent') ?: null;
@@ -162,6 +180,9 @@ final class EndUser
         return [$plainIp, $wrapped];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function explicitVendorClientIp(): ?string
     {
         foreach ($this->trustedClientIpHeaders as $header) {
@@ -179,7 +200,10 @@ final class EndUser
         return null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function forwardedChain(): array
     {
         if (($this->proxyHeaderFlags() & Request::HEADER_FORWARDED) !== 0) {
@@ -231,7 +255,10 @@ final class EndUser
         return is_string($validated) ? $validated : null;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function parseForwardedHeader(string $header): array
     {
         $elements = $this->splitForwardedElements($header);
@@ -259,6 +286,9 @@ final class EndUser
         return $this->forwardedHeaderMask ?? Request::getProxyHeaderFlags();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function proxyHeaderLine(string $name, string $serverKey): string
     {
         $line = $this->req->getHeaderLine($name);
@@ -270,7 +300,10 @@ final class EndUser
         return is_string($serverLine) ? $serverLine : '';
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     * @throws \InvalidArgumentException
+     */
     private function splitForwardedElements(string $header): array
     {
         return HttpUtils::splitQuoted($header, ',', true) ?? [];

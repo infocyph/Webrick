@@ -51,7 +51,9 @@ describe('Deep correctness batch C', function () {
 
     it('rejects externally supplied ranges built for another representation length', function () {
         $handle = fopen('php://temp', 'w+b');
-        expect($handle)->toBeResource();
+        if (!is_resource($handle)) {
+            throw new RuntimeException('Expected an open temporary stream.');
+        }
         fwrite($handle, '0123456789');
         rewind($handle);
 

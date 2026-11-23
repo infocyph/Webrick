@@ -57,6 +57,7 @@ final readonly class CompressionMiddleware
      * @param array<array-key,mixed> $prefOrder
      * @param array<array-key,mixed> $excludeTypes
      * @param array<array-key,mixed> $onlyTypes
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         private int $minBytes = 1400,
@@ -86,7 +87,11 @@ final readonly class CompressionMiddleware
         $this->onlyTypes = self::normalizeStringList($onlyTypes, 'onlyTypes');
     }
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $capabilities = $req->getAttribute(RuntimeCapabilities::ATTRIBUTE);
@@ -157,6 +162,7 @@ final readonly class CompressionMiddleware
     /**
      * @param array<array-key,mixed> $algorithms
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function normalizePreferenceOrder(array $algorithms): array
     {
@@ -173,6 +179,7 @@ final readonly class CompressionMiddleware
     /**
      * @param array<array-key,mixed> $values
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private static function normalizeStringList(array $values, string $name): array
     {
@@ -187,6 +194,9 @@ final readonly class CompressionMiddleware
         return $normalized;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function adjustValidators(Request $req, Response $resp, string $encodedBytes, string $algorithm): Response
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -203,6 +213,9 @@ final readonly class CompressionMiddleware
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function applyEncoded(Response $resp, string $encoded, string $algorithm): Response
     {
         $resp = $resp
@@ -241,7 +254,7 @@ final readonly class CompressionMiddleware
         return match ($algorithm) {
             'gzip' => gzencode($raw, $this->gzipLevel, ZLIB_ENCODING_GZIP),
             'deflate' => gzcompress($raw, $this->gzipLevel),
-            'br' => brotli_compress($raw, $this->brotliQuality),
+            'br' => function_exists('brotli_compress') ? \brotli_compress($raw, $this->brotliQuality) : false,
             'zstd' => zstd_compress($raw, $this->zstdLevel),
             default => false,
         };
@@ -257,6 +270,9 @@ final readonly class CompressionMiddleware
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hasNoTransform(Response $response): bool
     {
         return isset(CacheControl::directives($response->getHeaderLine('Cache-Control'))['no-transform']);
@@ -384,6 +400,9 @@ final readonly class CompressionMiddleware
         return [trim($value), $weak];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function shouldCompress(Request $req, Response $resp): bool
     {
         if ($resp->isStreaming() || $resp->getStringBody() === null) {

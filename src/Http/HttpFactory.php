@@ -19,6 +19,7 @@ final class HttpFactory
 {
     /**
      * @param array<string,mixed> $serverParams
+     * @throws \InvalidArgumentException
      */
     public function createRequest(string $method, Uri|string $uri, array $serverParams = []): Request
     {
@@ -29,6 +30,10 @@ final class HttpFactory
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function createResponse(int $code = StatusEnum::OK->value, string $reasonPhrase = ''): Response
     {
         if ($reasonPhrase === '' && ($status = StatusEnum::tryFrom($code))) {
@@ -38,6 +43,9 @@ final class HttpFactory
         return new Response($code, '', [], '1.1', $reasonPhrase);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public function createStreamFromFile(string $filename, string $mode = 'r'): Stream
     {
         $handle = fopen($filename, $mode);
@@ -48,7 +56,10 @@ final class HttpFactory
         return new Stream($handle);
     }
 
-    /** @param resource $resource */
+    /**
+     * @param mixed $resource Validated at runtime as a stream resource.
+     * @throws \RuntimeException
+     */
     public function createStreamFromResource($resource): Stream
     {
         if (!is_resource($resource)) {
@@ -63,6 +74,9 @@ final class HttpFactory
         return new StringBody($content);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function createUploadedFile(
         Stream $stream,
         ?int $size = null,
@@ -73,6 +87,9 @@ final class HttpFactory
         return new UploadedFile($stream, $size, $error, $clientFilename, $clientMediaType);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function createUri(string $uri = ''): Uri
     {
         return new Uri($uri);

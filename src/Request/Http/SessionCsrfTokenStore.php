@@ -12,6 +12,7 @@ final readonly class SessionCsrfTokenStore implements CsrfTokenStoreInterface
 {
     public function __construct(private string $key = '_token') {}
 
+    #[\Override]
     public function get(): ?string
     {
         $token = $_SESSION[$this->key] ?? null;
@@ -19,6 +20,7 @@ final readonly class SessionCsrfTokenStore implements CsrfTokenStoreInterface
         return is_string($token) && $token !== '' ? $token : null;
     }
 
+    #[\Override]
     public function put(string $token): void
     {
         $_SESSION[$this->key] = $token;

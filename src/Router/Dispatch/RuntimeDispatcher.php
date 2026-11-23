@@ -9,6 +9,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
+use Infocyph\Webrick\Router\Build\RouteCapability;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use JsonSerializable;
 use UnexpectedValueException;
@@ -16,6 +17,8 @@ use UnexpectedValueException;
 /** Runtime-plane dispatcher for already-compiled route execution plans. */
 final class RuntimeDispatcher
 {
+    private readonly bool $hasGlobalMiddleware;
+
     private readonly RuntimeDescriptorInvoker $resolver;
 
     /** @var array<string,CompiledMiddlewarePipeline> */
@@ -32,17 +35,29 @@ final class RuntimeDispatcher
         private readonly CompiledRouterArtifact $artifact,
     ) {
         $this->resolver = new RuntimeDescriptorInvoker($runtime->container());
+        $this->hasGlobalMiddleware = $artifact->hasGlobalMiddleware();
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $attributes = $this->artifact->routeAttributesForIndex($routeIndex);
+        // CORS/Produces presence is immutable build-time route metadata.
+        // Avoid hydrating matcher-only CompiledRoute objects for ordinary routes.
+        $attributes = ($plan->capabilities & (RouteCapability::CORS | RouteCapability::PRODUCES)) !== 0
+            ? $this->artifact->routeAttributesForIndex($routeIndex)
+            : [];
         if ($vars !== []) {
             $attributes['route_params'] = $vars;
         }
         if ($attributes !== []) {
             $request = $request->withAttributes($attributes);
+        }
+
+        if ($plan->kind !== ExecutionKind::MIDDLEWARE_PIPELINE && !$this->hasGlobalMiddleware) {
+            return $this->invokeTerminal($plan, $request, $vars);
         }
 
         $pipeline = $this->pipelineFor($plan);
@@ -52,7 +67,10 @@ final class RuntimeDispatcher
             : $this->invokeTerminal($plan, $request, $vars);
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatchDirectRouteArgs(ExecutionPlan $plan, array $vars): Response
     {
         /** @var callable $handler */
@@ -69,7 +87,10 @@ final class RuntimeDispatcher
         return $this->response($handler());
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     public function dispatchWithoutRequest(ExecutionPlan $plan, array $vars): Response
     {
         if ($plan->requiresRequest() || $plan->kind === ExecutionKind::MIDDLEWARE_PIPELINE) {
@@ -88,15 +109,25 @@ final class RuntimeDispatcher
 
     public function hasGlobalMiddleware(): bool
     {
-        return $this->artifact->hasGlobalMiddleware();
+        return $this->hasGlobalMiddleware;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     public function pipelineRequiresScope(ExecutionPlan $plan): bool
     {
+        if ($plan->kind !== ExecutionKind::MIDDLEWARE_PIPELINE && !$this->hasGlobalMiddleware) {
+            return false;
+        }
+
         return $this->pipelineFor($plan)?->requiresScope() ?? false;
     }
 
-    /** @param array<string,string> $vars */
+    /**
+     * @param array<string,string> $vars
+     * @throws \UnexpectedValueException
+     */
     private function invokeTerminal(ExecutionPlan $plan, Request $request, array $vars): Response
     {
         if (!$plan->requiresRequest() && $plan->terminalKind !== ExecutionKind::DIRECT_REQUEST) {
@@ -121,7 +152,10 @@ final class RuntimeDispatcher
         return $this->response($result);
     }
 
-    /** @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null */
+    /**
+     * @return array<array-key,mixed>|bool|float|int|JsonSerializable|string|null
+     * @throws \UnexpectedValueException
+     */
     private function normalizeResponsePayload(mixed $value): array|bool|float|int|JsonSerializable|string|null
     {
         if (is_array($value) || $value instanceof JsonSerializable) {
@@ -139,6 +173,7 @@ final class RuntimeDispatcher
     /**
      * @param array<string,string> $vars
      * @return list<string>
+     * @throws \UnexpectedValueException
      */
     private function orderedRouteArguments(ExecutionPlan $plan, array $vars): array
     {
@@ -153,6 +188,9 @@ final class RuntimeDispatcher
         return $arguments;
     }
 
+    /**
+     * @throws \UnexpectedValueException
+     */
     private function pipelineFor(ExecutionPlan $plan): ?CompiledMiddlewarePipeline
     {
         if (isset($this->pipelines[$plan->routeId])) {
@@ -214,6 +252,9 @@ final class RuntimeDispatcher
     /**
      * @param array<array-key,mixed>|callable|string|null $descriptor
      * @param array<int|string,mixed> $arguments
+     * @throws \UnexpectedValueException
+     * @throws \Psr\Container\ContainerExceptionInterface
+     * @throws \Psr\Container\NotFoundExceptionInterface
      */
     private function resolveDescriptor(array|callable|string|null $descriptor, array $arguments = []): mixed
     {
@@ -257,9 +298,7 @@ final class RuntimeDispatcher
     private function withTagged(array $explicit, array $tags): array
     {
         foreach ($tags as $tag) {
-            foreach ($this->runtime->tagged($tag) as $middleware) {
-                $explicit[] = $middleware;
-            }
+            $explicit[] = new RuntimeTaggedMiddleware($tag, $this->runtime);
         }
 
         return $explicit;

@@ -15,6 +15,7 @@ final readonly class ParameterizedRuntimeMiddleware
         public string $window,
     ) {}
 
+    /** @param Closure(Request):Response $next */
     public function __invoke(Request $request, Closure $next): Response
     {
         return $next($request);

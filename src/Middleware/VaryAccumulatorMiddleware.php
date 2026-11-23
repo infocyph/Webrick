@@ -15,6 +15,7 @@ final class VaryAccumulatorMiddleware
 {
     /**
      * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {
@@ -158,6 +159,7 @@ final class VaryAccumulatorMiddleware
 
     /**
      * @return list<string>
+     * @throws \InvalidArgumentException
      */
     private function inferAutoTokens(Request $req, Response $resp): array
     {

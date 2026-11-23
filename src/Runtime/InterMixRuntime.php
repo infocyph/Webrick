@@ -26,6 +26,10 @@ final readonly class InterMixRuntime
         return $this->container;
     }
 
+    /**
+     * @throws \Psr\Container\NotFoundExceptionInterface
+     * @throws \Psr\Container\ContainerExceptionInterface
+     */
     public function get(string $id): mixed
     {
         return $this->container->get($id);

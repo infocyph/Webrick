@@ -17,19 +17,29 @@ use InvalidArgumentException;
 use JsonSerializable;
 use Stringable;
 
-/** @implements ArrayAccess<string,mixed> */
+/**
+ * Primary extensible HTTP request value object, consumed by Webrick applications.
+ *
+ * @api
+ * @implements ArrayAccess<string,mixed>
+ */
 class Request extends NativeServerRequest implements ArrayAccess, JsonSerializable, Stringable
 {
     use MacroMix;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
     public const HEADER_FORWARDED = 0b10000;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
     public const HEADER_X_FORWARDED_FOR = 0b00001;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
     public const HEADER_X_FORWARDED_HOST = 0b00010;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
     public const HEADER_X_FORWARDED_PORT = 0b01000;
 
+    /** @psalm-suppress MissingClassConstType Preserve existing untyped subclass overrides. */
     public const HEADER_X_FORWARDED_PROTO = 0b00100;
 
     private static int $trustedHeaderFlags = 0;
@@ -50,12 +60,14 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /** @var list<string>|null */
     private ?array $cachedSegments = null;
 
-    protected function __clone(): void
+    #[\Override]
+    protected function __clone()
     {
         parent::__clone();
         $this->resetDerivedCaches();
     }
 
+    #[\Override]
     public function __toString(): string
     {
         return json_encode($this->all(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
@@ -65,6 +77,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
      * @param array<string,mixed> $query
      * @param array<string,mixed> $post
      * @param array<string,string|list<string>> $headers
+     * @throws \InvalidArgumentException
      */
     public static function fake(
         array $query = [],
@@ -90,6 +103,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         self::$trustedProxyConfigurationFrozen = true;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public static function fromGlobals(): self
     {
         $native = parent::createFromGlobals();
@@ -139,7 +156,11 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
-    /** @param list<string> $cidrs */
+    /**
+     * @param list<string> $cidrs
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
     public static function setTrustedProxies(array $cidrs, ?int $headerFlags = null): void
     {
         if (self::$trustedProxyConfigurationFrozen) {
@@ -283,6 +304,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->file($key) !== null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function header(string $name, ?string $default = null): ?string
     {
         $line = $this->getHeaderLine($name);
@@ -309,12 +333,18 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $proxyAware ? $user->ipViaProxy() : $user->ipNoProxy();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isJson(): bool
     {
         return HttpUtils::isJsonContentType($this->getHeaderLine('Content-Type'));
     }
 
-    /** @param string|list<string> $verbs */
+    /**
+     * @param string|list<string> $verbs
+     * @throws \InvalidArgumentException
+     */
     public function isMethod(string|array $verbs): bool
     {
         $normalized = [];
@@ -330,18 +360,25 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->getUri()->getScheme() === 'https';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function isXml(): bool
     {
         return HttpUtils::isXmlContentType($this->getHeaderLine('Content-Type'));
     }
 
     /** @return array<string,mixed> */
+    #[\Override]
     public function jsonSerialize(): array
     {
         return $this->all();
     }
 
-    /** @param list<string>|null $supported */
+    /**
+     * @param list<string>|null $supported
+     * @throws \InvalidArgumentException
+     */
     public function locale(?array $supported = null, string $fallback = 'en', bool $cache = true): string
     {
         $fallback = self::normalizeLocale($fallback);
@@ -397,6 +434,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return !$this->has($keys);
     }
 
+    #[\Override]
     public function offsetExists(mixed $offset): bool
     {
         $key = self::toStringKey($offset);
@@ -404,6 +442,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $key !== null && $this->data($key) !== null;
     }
 
+    #[\Override]
     public function offsetGet(mixed $offset): mixed
     {
         $key = self::toStringKey($offset);
@@ -411,11 +450,19 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $key === null ? null : $this->data($key);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function offsetSet(mixed $offset, mixed $value): void
     {
         throw new InvalidArgumentException('Request is immutable');
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
+    #[\Override]
     public function offsetUnset(mixed $offset): void
     {
         throw new InvalidArgumentException('Request is immutable');
@@ -430,7 +477,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return array_intersect_key($this->all(), array_flip(self::stringList($keys)));
     }
 
-    /** @param list<string> $mimeTypes */
+    /**
+     * @param list<string> $mimeTypes
+     * @throws \InvalidArgumentException
+     */
     public function prefers(array $mimeTypes): ?string
     {
         return new ContentNegotiator($this->headers())->preferred($mimeTypes);
@@ -471,7 +521,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return is_string($value) ? $value : $default;
     }
 
-    /** @return array<string,string> */
+    /**
+     * @return array<string,string>
+     * @throws \InvalidArgumentException
+     */
     public function ua(): array
     {
         return EndUser::from($this, self::$trustedProxyNetworks)->parseUserAgent();
@@ -480,6 +533,7 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
     /**
      * @param array<string,string> $rules
      * @return array<string,mixed>
+     * @throws \InvalidArgumentException
      */
     public function validate(array $rules): array
     {
@@ -497,6 +551,9 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return $this->expectsJson();
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function wantsXml(): bool
     {
         return $this->expectsXml();
@@ -509,14 +566,14 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         return parent::withCookieParams($cookies);
     }
 
-    /** @param array<string,mixed>|object|null $data */
+    /** @param array<array-key,mixed>|object|null $data */
     #[\Override]
     public function withParsedBody(object|array|null $data): static
     {
         return parent::withParsedBody($data);
     }
 
-    /** @param array<string,mixed> $query */
+    /** @param array<array-key,mixed> $query */
     #[\Override]
     public function withQueryParams(array $query): static
     {
@@ -628,7 +685,10 @@ class Request extends NativeServerRequest implements ArrayAccess, JsonSerializab
         );
     }
 
-    /** @param list<string> $supported */
+    /**
+     * @param list<string> $supported
+     * @throws \InvalidArgumentException
+     */
     private function resolveLocaleFromHeader(array $supported, string $fallback): ?string
     {
         return $this->pickLocale($this->locale($supported, $fallback, true), $supported);

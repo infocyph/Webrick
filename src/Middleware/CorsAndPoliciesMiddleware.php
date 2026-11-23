@@ -24,6 +24,7 @@ final readonly class CorsAndPoliciesMiddleware
      * @param string|list<string> $exposeHeaders
      * @param list<string> $acceptCh
      * @param list<string> $timingAllowOrigins
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         array $origins = [],
@@ -59,6 +60,7 @@ final readonly class CorsAndPoliciesMiddleware
 
     /**
      * @param Closure(Request):Response $next
+     * @throws \InvalidArgumentException
      */
     public function __invoke(Request $req, Closure $next): Response
     {

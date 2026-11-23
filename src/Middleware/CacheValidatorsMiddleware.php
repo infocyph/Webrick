@@ -32,7 +32,11 @@ final readonly class CacheValidatorsMiddleware
         private int $autoEtagMinSize = 2048,
     ) {}
 
-    /** @param Closure(Request):Response $next */
+    /**
+     * @param Closure(Request):Response $next
+     * @throws \LogicException
+     * @throws \RuntimeException
+     */
     public function __invoke(Request $req, Closure $next): Response
     {
         $getOrHead = $this->isGetOrHead($req);
@@ -72,6 +76,10 @@ final readonly class CacheValidatorsMiddleware
         return HttpUtils::parseHttpDate($value);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function applyResponsePreconditions(Request $req, Response $resp): Response
     {
         $etag = trim($resp->getHeaderLine('ETag'));
@@ -87,7 +95,10 @@ final readonly class CacheValidatorsMiddleware
         return $this->maybeShortCircuit($result, true) ?? $resp;
     }
 
-    /** @param array<string,string> $headers */
+    /**
+     * @param array<string,string> $headers
+     * @throws \InvalidArgumentException
+     */
     private function ensureValidatorHeaders(Response $resp, array $headers): Response
     {
         foreach ($headers as $name => $value) {
@@ -99,7 +110,10 @@ final readonly class CacheValidatorsMiddleware
         return $resp;
     }
 
-    /** @return array{0:ConditionalValidator,1:Outcome} */
+    /**
+     * @return array{0:ConditionalValidator,1:Outcome}
+     * @throws \LogicException
+     */
     private function evaluatePreconditions(Request $req): array
     {
         $provider = $this->metaProvider;
@@ -116,6 +130,9 @@ final readonly class CacheValidatorsMiddleware
         return [$validator, $validator->evaluate($req)];
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function hasUnsafePreconditions(Request $req): bool
     {
         return $req->getHeaderLine('If-Match') !== ''
@@ -123,6 +140,9 @@ final readonly class CacheValidatorsMiddleware
             || $req->getHeaderLine('If-Unmodified-Since') !== '';
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function isGetOrHead(Request $req): bool
     {
         $method = HttpMethodEnum::normalize($req->getMethod());
@@ -157,6 +177,9 @@ final readonly class CacheValidatorsMiddleware
         return $etag === null ? $resp : $resp->withHeader('ETag', $etag);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function maybeDropStaleRangeHeader(Request $req, ConditionalValidator $validator, bool $getOrHead): Request
     {
         if (!$getOrHead || !$req->hasHeader('Range') || $validator->isRangeFresh($req)) {
@@ -166,6 +189,10 @@ final readonly class CacheValidatorsMiddleware
         return $req->withoutHeader('Range')->withAttribute('range_dropped', true);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     private function maybeShortCircuit(Outcome $result, bool $getOrHead): ?Response
     {
         if ($result->state === Outcome::PASS) {

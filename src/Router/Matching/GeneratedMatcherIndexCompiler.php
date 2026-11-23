@@ -10,6 +10,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<string,array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,mixed>}>>>}> $indexes
      * @return array{0:array<int,mixed>,1:array<string,array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}>}
+     * @throws \UnexpectedValueException
      */
     public function compile(array $indexes): array
     {
@@ -25,6 +26,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,mixed>}>>> $routes
      * @return array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>
+     * @throws \UnexpectedValueException
      */
     private function compileDynamic(array $routes, GeneratedMatcherRouteIndexer $routeIndexer): array
     {
@@ -46,6 +48,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array{static:array<string,array<string,mixed>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,mixed>}>>>} $index
      * @return array{static:array<string,array<string,int>>,dynamic:array<int,array<string,array<string,array{segments:list<array<string,mixed>>,verbs:array<string,int>}>>>}
+     * @throws \UnexpectedValueException
      */
     private function compileHost(array $index, GeneratedMatcherRouteIndexer $routeIndexer): array
     {
@@ -58,6 +61,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<string,array<string,mixed>> $routes
      * @return array<string,array<string,int>>
+     * @throws \UnexpectedValueException
      */
     private function compileStatic(array $routes, GeneratedMatcherRouteIndexer $routeIndexer): array
     {
@@ -74,6 +78,7 @@ final class GeneratedMatcherIndexCompiler
     /**
      * @param array<string,mixed> $verbs
      * @return array<string,int>
+     * @throws \UnexpectedValueException
      */
     private function compileVerbs(array $verbs, GeneratedMatcherRouteIndexer $routeIndexer): array
     {

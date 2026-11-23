@@ -37,6 +37,8 @@ final class Dispatcher
 
     /**
      * @param array<string,mixed> $vars
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
      */
     public function dispatch(CompiledRoute $route, Request $request, array $vars): Response
     {
@@ -55,6 +57,9 @@ final class Dispatcher
         return $this->pipelines[$routeId]->handle($request);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function aliasStringClass(string $alias): ?string
     {
         $descriptor = MiddlewareAliases::compileString($alias);
@@ -67,6 +72,9 @@ final class Dispatcher
             : null;
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function assertMiddlewareResponse(mixed $result, string $source): Response
     {
         if (!$result instanceof Response) {
@@ -120,6 +128,9 @@ final class Dispatcher
         };
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function buildInvokableFromEntry(mixed $mw): callable
     {
         if (is_callable($mw) && !is_string($mw)) {
@@ -141,6 +152,7 @@ final class Dispatcher
     /**
      * @param array<class-string|object|callable|string|array{0:object|string,1:string}> $list
      * @return list<callable(Request, Closure(Request):Response):Response>
+     * @throws \InvalidArgumentException
      */
     private function buildInvokables(array $list): array
     {
@@ -181,6 +193,7 @@ final class Dispatcher
 
     /**
      * @param Closure(Request):Response $final
+     * @throws \InvalidArgumentException
      */
     private function compilePipelineForRoute(CompiledRoute $route, Closure $final): MiddlewarePipeline
     {
@@ -197,6 +210,9 @@ final class Dispatcher
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function dispatchFinal(CompiledRoute $route, Request $request): Response
     {
         $routeVars = $this->normalizeNamedArguments($request->getAttribute('route_params', []));
@@ -212,6 +228,7 @@ final class Dispatcher
 
     /**
      * @return array{0:list<callable>,1:list<callable>}
+     * @throws \InvalidArgumentException
      */
     private function filteredGlobalsFor(CompiledRoute $route): array
     {
@@ -233,6 +250,7 @@ final class Dispatcher
      * @param array<class-string|object|callable|string> $globals
      * @param array<string,true> $routeClasses
      * @return array<class-string|object|callable|string>
+     * @throws \InvalidArgumentException
      */
     private function filterGlobals(array $globals, array $routeClasses): array
     {
@@ -246,7 +264,10 @@ final class Dispatcher
         return $out;
     }
 
-    /** @param class-string $class */
+    /**
+     * @param class-string $class
+     * @throws \InvalidArgumentException
+     */
     private function instantiateClassViaInterMix(string $class): object
     {
         try {
@@ -260,6 +281,9 @@ final class Dispatcher
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function invokeClassMiddleware(string $class, Request $req, callable $next): Response
     {
         if (!class_exists($class)) {
@@ -279,6 +303,7 @@ final class Dispatcher
     /**
      * @param class-string $class
      * @param array<string,mixed> $callArgs
+     * @throws \InvalidArgumentException
      */
     private function invokeInstanceMethod(string $class, string $method, array $callArgs): mixed
     {
@@ -290,7 +315,10 @@ final class Dispatcher
         return $this->invoker->invoke(Closure::fromCallable($callable), $callArgs);
     }
 
-    /** @param array<string,mixed> $callArgs */
+    /**
+     * @param array<string,mixed> $callArgs
+     * @throws \InvalidArgumentException
+     */
     private function invokeRouteHandler(mixed $handler, array $callArgs): mixed
     {
         $classMethod = $this->classMethodArrayHandler($handler);
@@ -371,13 +399,13 @@ final class Dispatcher
      */
     private function parseClassMethodStringHandler(string $handler): ?array
     {
-        if (!str_contains($handler, '::') && !str_contains($handler, '@')) {
+        $separator = str_contains($handler, '::') ? '::' : '@';
+        $position = strpos($handler, $separator);
+        if ($position === false) {
             return null;
         }
-
-        [$class, $method] = str_contains($handler, '::')
-            ? explode('::', $handler, 2)
-            : explode('@', $handler, 2);
+        $class = substr($handler, 0, $position);
+        $method = substr($handler, $position + strlen($separator));
 
         if ($class === '' || $method === '' || !class_exists($class)) {
             return null;
@@ -394,7 +422,8 @@ final class Dispatcher
         $set = [];
         foreach ($route->getMiddlewares() as $mw) {
             if (is_string($mw)) {
-                if ($this->looksLikeAliasString($mw) && ($class = $this->aliasStringClass($mw))) {
+                $class = $this->looksLikeAliasString($mw) ? $this->aliasStringClass($mw) : null;
+                if ($class !== null) {
                     $set[$class] = true;
                 } elseif (class_exists($mw)) {
                     $set[$mw] = true;
@@ -409,6 +438,7 @@ final class Dispatcher
 
     /**
      * @param array<string,true> $routeClasses
+     * @throws \InvalidArgumentException
      */
     private function shouldKeepGlobalEntry(mixed $mw, array $routeClasses): bool
     {
@@ -433,6 +463,9 @@ final class Dispatcher
         throw new InvalidArgumentException(sprintf('Unsupported middleware entry of type %s', gettype($mw)));
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function wrapAliasStringAsMiddleware(string $alias): callable
     {
         $descriptor = MiddlewareAliases::compileString($alias);
@@ -452,6 +485,9 @@ final class Dispatcher
         );
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function wrapClassStringAsMiddleware(string $mw): callable
     {
         if (!class_exists($mw)) {
@@ -461,6 +497,9 @@ final class Dispatcher
         return fn(Request $request, callable $next): Response => $this->invokeClassMiddleware($mw, $request, $next);
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private function wrapObjectAsMiddleware(object $mw): callable
     {
         if (!is_callable($mw)) {

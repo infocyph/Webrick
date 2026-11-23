@@ -30,6 +30,19 @@ final class RuntimeMiddlewareDescriptorBench
 
     private InterMixRuntime $runtime;
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
+    public function __construct()
+    {
+        $this->setUp();
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     public function setUp(): void
     {
         $this->request = Request::fake(uri: 'http://localhost/bench');
@@ -41,7 +54,10 @@ final class RuntimeMiddlewareDescriptorBench
         $terminal = static fn(Request $request): Response => Response::plaintext($request->getMethod(), 200);
 
         $this->directPipeline = new CompiledMiddlewarePipeline(
-            [static fn(Request $request, Closure $next): Response => $next($request)],
+            [static function (Request $request, Closure $next): Response {
+                /** @var Closure(Request):Response $next */
+                return $next($request);
+            }],
             $terminal,
             $this->runtime,
         );
@@ -59,18 +75,27 @@ final class RuntimeMiddlewareDescriptorBench
         $this->assertSuccessful($this->handle($this->parameterizedPipeline));
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchDirectCallableMiddleware(): void
     {
         $this->handle($this->directPipeline);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     #[Bench\BeforeMethods('setUp')]
     public function benchParameterizedRuntimeDescriptor(): void
     {
         $this->handle($this->parameterizedPipeline);
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function assertSuccessful(Response $response): void
     {
         if ($response->getStatusCode() !== 200 || (string) $response->getBody() !== 'GET') {
@@ -78,6 +103,9 @@ final class RuntimeMiddlewareDescriptorBench
         }
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     private function handle(CompiledMiddlewarePipeline $pipeline): Response
     {
         $request = $this->request;

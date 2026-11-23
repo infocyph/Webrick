@@ -51,16 +51,19 @@ final class RunwireBridgeScopeProbe
 
 final class RunwireBridgeBodyFixture implements RequestBodyInterface
 {
+    #[\Override]
     public function bufferedBytes(): int
     {
         return 0;
     }
 
+    #[\Override]
     public function eof(): bool
     {
         return true;
     }
 
+    #[\Override]
     public function onData(callable $callback): RequestBodyInterface
     {
         unset($callback);
@@ -68,6 +71,7 @@ final class RunwireBridgeBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function onEnd(callable $callback): RequestBodyInterface
     {
         $callback($this);
@@ -75,6 +79,7 @@ final class RunwireBridgeBodyFixture implements RequestBodyInterface
         return $this;
     }
 
+    #[\Override]
     public function read(int $maxBytes = PHP_INT_MAX): string
     {
         unset($maxBytes);
@@ -82,12 +87,14 @@ final class RunwireBridgeBodyFixture implements RequestBodyInterface
         return '';
     }
 
+    #[\Override]
     public function receivedBytes(): int
     {
         return 0;
     }
 
-    public function trailers(): ?Headers
+    #[\Override]
+    public function trailers(): Headers
     {
         return new Headers();
     }
@@ -101,6 +108,7 @@ final class RunwireBridgeWriterFixture implements ResponseWriterInterface
 
     private bool $started = false;
 
+    #[\Override]
     public function end(string $finalChunk = ''): WriteResult
     {
         unset($finalChunk);
@@ -114,16 +122,19 @@ final class RunwireBridgeWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function isEnded(): bool
     {
         return $this->ended;
     }
 
+    #[\Override]
     public function isStarted(): bool
     {
         return $this->started;
     }
 
+    #[\Override]
     public function onDrain(callable $callback): ResponseWriterInterface
     {
         unset($callback);
@@ -131,6 +142,7 @@ final class RunwireBridgeWriterFixture implements ResponseWriterInterface
         return $this;
     }
 
+    #[\Override]
     public function start(int $status = 200, ?Headers $headers = null): WriteResult
     {
         unset($status, $headers);
@@ -139,6 +151,7 @@ final class RunwireBridgeWriterFixture implements ResponseWriterInterface
         return new WriteResult(WriteState::ACCEPTED, 0);
     }
 
+    #[\Override]
     public function write(string $chunk): WriteResult
     {
         return new WriteResult(WriteState::ACCEPTED, strlen($chunk));
@@ -161,6 +174,10 @@ function runwire_bridge_builder(): ContainerBuilder
     return $builder;
 }
 
+/**
+ * @throws \OverflowException
+ * @throws \InvalidArgumentException
+ */
 function runwire_bridge_request(RunwireRequestContext $context): HttpRequest
 {
     return new HttpRequest(
@@ -171,6 +188,36 @@ function runwire_bridge_request(RunwireRequestContext $context): HttpRequest
         body: new RunwireBridgeBodyFixture(),
         context: $context,
     );
+}
+
+
+/**
+ * @throws LogicException When the runtime did not install an InterMix scope bridge.
+ */
+function runwire_bridge_require_scope(
+    \Infocyph\Webrick\Runtime\Http\RuntimeRequestContext $context,
+): \Infocyph\Webrick\Runtime\Http\RuntimeScopeBridgeInterface {
+    return $context->scopeBridge
+        ?? throw new LogicException('Runwire InterMix scope bridge was not installed.');
+}
+
+/**
+ * @param callable():bool $callback
+ * @throws LogicException
+ * @throws \UnexpectedValueException
+ */
+function runwire_bridge_within_bool(
+    \Infocyph\Webrick\Runtime\Http\RuntimeRequestContext $context,
+    InterMixRuntime $runtime,
+    Request $request,
+    callable $callback,
+): bool {
+    $result = runwire_bridge_require_scope($context)->withinScope($runtime, $request, $callback);
+    if (!is_bool($result)) {
+        throw new \UnexpectedValueException('Runwire scope bridge must return a boolean.');
+    }
+
+    return $result;
 }
 
 beforeEach(function (): void {
@@ -199,16 +246,30 @@ test('runwire bridge seeds source-free native compiled inputs without rebuilding
             $requestContext = RunwireRequestContext::create($runtime);
             $context = $adapter->context(runwire_bridge_request($requestContext), new RunwireBridgeWriterFixture());
             $request = Request::fake(uri: $uri);
-            $resolved = $context->scopeBridge->withinScope($interMix, $request,
+            $resolved = runwire_bridge_require_scope($context)->withinScope($interMix, $request,
                 static function () use ($container, $interMix): array {
                     $scope = $interMix->captureScopeContext();
-                    $child = new Fiber(static fn(): array => $interMix->withinScopeContext($scope,
-                        static fn(): array => [$container->get(RunwireContext::class),
-                            $container->get(RunwireRequestContext::class), $container->get(Request::class)]));
-                    $child->start();
+                    $child = new Fiber(static function () use ($interMix, $scope, $container): array {
+                        $value = $interMix->withinScopeContext($scope,
+                            static fn(): array => [$container->get(RunwireContext::class),
+                                $container->get(RunwireRequestContext::class), $container->get(Request::class)]);
+                        if (!is_array($value)) {
+                            throw new \UnexpectedValueException('Runwire child scope returned a non-array value.');
+                        }
 
-                    return $child->getReturn();
+                        return $value;
+                    });
+                    $child->start();
+                    $result = $child->getReturn();
+                    if (!is_array($result)) {
+                        throw new \UnexpectedValueException('Runwire child scope did not return an array.');
+                    }
+
+                    return $result;
                 });
+            if (!is_array($resolved)) {
+                throw new \UnexpectedValueException('Runwire scope bridge must return an array.');
+            }
             expect($resolved)->toBe([$runtime, $requestContext, $request]);
             expect(fn(): mixed => $container->get(Request::class))
                 ->toThrow(\Infocyph\InterMix\Exceptions\ContainerException::class);
@@ -225,6 +286,10 @@ test('runwire bridge seeds source-free native compiled inputs without rebuilding
                 RecursiveIteratorIterator::CHILD_FIRST,
             );
             foreach ($entries as $entry) {
+                if (!$entry instanceof \SplFileInfo) {
+                    throw new \UnexpectedValueException('Unexpected compiled artifact entry.');
+                }
+
                 $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
             }
             rmdir($root);
@@ -249,7 +314,7 @@ test('runwire bridge opens one InterMix request scope and preserves exact runtim
 
     expect($context->scopeBridge)->toBeInstanceOf(RunwireInterMixScopeBridge::class);
 
-    $resolved = $context->scopeBridge->withinScope(
+    $resolved = runwire_bridge_require_scope($context)->withinScope(
         $interMix,
         $request,
         static fn(): array => [
@@ -259,6 +324,10 @@ test('runwire bridge opens one InterMix request scope and preserves exact runtim
             $container->get(RunwireBridgeScopedMarker::class),
         ],
     );
+
+    if (!is_array($resolved)) {
+        throw new \UnexpectedValueException('Runwire scope bridge did not return a result array.');
+    }
 
     expect($resolved[0])->toBe($runtime)
         ->and($resolved[1])->toBe($requestContext)
@@ -314,7 +383,7 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
                         new RunwireBridgeWriterFixture(),
                     );
 
-                    return $context->scopeBridge->withinScope(
+                    return runwire_bridge_within_bool($context,
                         $interMix,
                         $request,
                         static fn(): bool => $interMix->get(RunwireBridgeScopedMarker::class) === $parent,
@@ -322,8 +391,12 @@ test('runwire bridge attaches an exact borrowed InterMix scope without opening a
                 },
             );
             $fiber->start();
+            $value = $fiber->getReturn();
+            if (!is_bool($value)) {
+                throw new \UnexpectedValueException('Runwire bridge child returned a non-boolean value.');
+            }
 
-            return $fiber->getReturn();
+            return $value;
         },
         [
             RunwireContext::class => $runtime,
@@ -349,7 +422,9 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
     $integration = new RunwireIntegration($container);
     $integration->bind($runtime);
     $interMix = new InterMixRuntime($container);
-    $callbackRan = false;
+    $callbackState = new class {
+        public bool $ran = false;
+    };
 
     $container->withinScope(
         'host.request',
@@ -361,7 +436,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
             $requestB,
             $integration,
             $interMix,
-            &$callbackRan,
+            $callbackState,
         ): void {
             $scopeContext = $active->captureScopeContext();
             $fiber = new Fiber(
@@ -372,7 +447,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                     $integration,
                     $interMix,
                     $scopeContext,
-                    &$callbackRan,
+                    $callbackState,
                 ): void {
                     $adapter = new RunwireRuntimeAdapter(
                         runtimeContext: $runtime,
@@ -388,11 +463,11 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
                         new RunwireBridgeWriterFixture(),
                     );
 
-                    expect(fn() => $context->scopeBridge->withinScope(
+                    expect(fn(): mixed => runwire_bridge_require_scope($context)->withinScope(
                         $interMix,
                         $requestB,
-                        static function () use (&$callbackRan): void {
-                            $callbackRan = true;
+                        static function () use ($callbackState): void {
+                            $callbackState->ran = true;
                         },
                     ))->toThrow(LogicException::class, 'different Runwire request');
                 },
@@ -410,7 +485,7 @@ test('runwire bridge rejects a borrowed scope captured for another live request'
         ],
     );
 
-    expect($callbackRan)->toBeFalse();
+    expect($callbackState->ran)->toBeFalse();
 
     $integration->release($runtime);
 });
@@ -434,13 +509,13 @@ test('runwire bridge keeps interleaved request scopes isolated', function (): vo
         string $path,
     ) use ($interMix): Fiber {
         return new Fiber(static function () use ($context, $expected, $path, $interMix): bool {
-            return $context->scopeBridge->withinScope(
+            return runwire_bridge_within_bool($context,
                 $interMix,
                 Request::fake(uri: $path),
                 static function () use ($interMix, $expected): bool {
                     $marker = $interMix->get(RunwireBridgeScopedMarker::class);
                     $requestContext = $interMix->get(RunwireRequestContext::class);
-                    Fiber::suspend($marker);
+                    expect(Fiber::suspend($marker))->toBeNull();
 
                     return $requestContext === $expected
                         && $interMix->get(RunwireBridgeScopedMarker::class) === $marker;
@@ -486,7 +561,7 @@ test('runwire bridge rejects completed requests and conflicting runtime bindings
         new RunwireBridgeWriterFixture(),
     );
     $otherContainer = runwire_bridge_builder()->build();
-    expect(fn() => $context->scopeBridge->withinScope(
+    expect(fn(): mixed => runwire_bridge_require_scope($context)->withinScope(
         new InterMixRuntime($otherContainer),
         Request::fake(uri: '/wrong-container'),
         static fn(): null => null,
@@ -494,7 +569,7 @@ test('runwire bridge rejects completed requests and conflicting runtime bindings
 
     $requestContext->complete();
 
-    expect(fn() => $context->scopeBridge->withinScope(
+    expect(fn(): mixed => runwire_bridge_require_scope($context)->withinScope(
         new InterMixRuntime($container),
         Request::fake(uri: '/completed'),
         static fn(): null => null,
@@ -540,7 +615,7 @@ test('runwire bridge exposes the exact host coroutine scope when capability is a
                 new RunwireBridgeWriterFixture(),
             );
 
-            return $context->scopeBridge->withinScope(
+            return runwire_bridge_within_bool($context,
                 $interMix,
                 Request::fake(uri: '/coroutine'),
                 static fn(): bool => $interMix->get(CoroutineScope::class) === $scope,

@@ -24,60 +24,21 @@ use Infocyph\Webrick\Router\Url\SignedUrlConfig;
 use Psr\Log\NullLogger;
 
 if (! class_exists('DemoController', false)) {
-    final readonly class DemoController
-    {
-        public function hello(string $name): Response
-        {
-            return Response::json([
-                'handler' => 'DemoController::hello',
-                'hello' => $name,
-                'time' => \date(DATE_ATOM),
-            ]);
-        }
-    }
+    class_alias(\Infocyph\Webrick\Tests\Fixture\IntegrationDemoController::class, 'DemoController');
 }
 
 if (! class_exists('UsersController', false)) {
-    final readonly class UsersController
-    {
-        public function create(): Response
-        {
-            return Response::json(['action' => 'create']);
-        }
-
-        public function destroy(string $id): Response
-        {
-            return Response::json(['action' => 'destroy', 'id' => $id]);
-        }
-
-        public function edit(string $id): Response
-        {
-            return Response::json(['action' => 'edit', 'id' => $id]);
-        }
-
-        public function index(): Response
-        {
-            return Response::json(['action' => 'index']);
-        }
-
-        public function show(string $id): Response
-        {
-            return Response::json(['action' => 'show', 'id' => $id]);
-        }
-
-        public function store(Request $r): Response
-        {
-            return Response::json(['action' => 'store', 'data' => $r->all()], 201);
-        }
-
-        public function update(Request $r, string $id): Response
-        {
-            return Response::json(['action' => 'update', 'id' => $id, 'data' => $r->all()]);
-        }
-    }
+    class_alias(\Infocyph\Webrick\Tests\Fixture\IntegrationUsersController::class, 'UsersController');
 }
 
-/** Create a test RouterKernel with actual routes. */
+/**
+ * Create a test RouterKernel with actual routes.
+ *
+ * @param array<int,mixed> $extraMiddleware
+ * @throws \InvalidArgumentException
+ * @throws \LogicException
+ * @throws \RuntimeException
+ */
 function createTestKernel(array $extraMiddleware = []): RouterKernel
 {
     $logger = new NullLogger;
@@ -136,11 +97,11 @@ function createTestKernel(array $extraMiddleware = []): RouterKernel
                 'error' => $message,
                 'status' => $status,
                 'path' => $request->getUri()->getPath(),
-            ], $status, $headers);
+            ], $status, webrickTestHeaders($headers));
         },
     );
 
-    $register = function () {
+    $register = function (): void {
         require __DIR__.'/../routes.php';
     };
 

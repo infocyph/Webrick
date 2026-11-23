@@ -21,6 +21,7 @@ final readonly class RuntimeMiddlewareDescriptor
 
     /**
      * @param array<array-key,mixed> $parameters
+     * @throws \InvalidArgumentException
      */
     public function __construct(
         public mixed $resolver,
@@ -33,7 +34,10 @@ final readonly class RuntimeMiddlewareDescriptor
         $this->parameters = $parameters;
     }
 
-    /** @return string|array<array-key,mixed>|Closure|callable */
+    /**
+     * @return string|array<array-key,mixed>|Closure|callable
+     * @throws \InvalidArgumentException
+     */
     public function resolverSpec(): string|array|Closure|callable
     {
         $resolver = $this->resolver;
@@ -44,7 +48,10 @@ final readonly class RuntimeMiddlewareDescriptor
         throw new InvalidArgumentException('Runtime middleware resolver must be a resolver-compatible callable descriptor.');
     }
 
-    /** @param array<array-key,mixed> $parameters */
+    /**
+     * @param array<array-key,mixed> $parameters
+     * @throws \InvalidArgumentException
+     */
     private static function assertParameters(array $parameters): void
     {
         if (!array_is_list($parameters)) {
@@ -57,6 +64,9 @@ final readonly class RuntimeMiddlewareDescriptor
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertResolver(mixed $resolver): void
     {
         if (!is_string($resolver) && !is_array($resolver) && !$resolver instanceof Closure && !is_callable($resolver)) {

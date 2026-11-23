@@ -34,6 +34,7 @@ use RuntimeException;
  *   Router::setInstance($registrar);
  *   Router::get('/ping', fn () => 'pong', 'ping');
  *
+ * @api
  * @phpstan-type HandlerArray array{0:string|object,1:string}
  * @phpstan-type RouteHandler HandlerArray|string|callable
  * @phpstan-type RouteOptions array{
@@ -51,13 +52,17 @@ use RuntimeException;
  *   name?:mixed,
  *   as?:mixed
  * }
- * @method static RouteInterface delete(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface get(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface head(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface options(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface patch(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface post(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
- * @method static RouteInterface put(string $path, RouteHandler $handler, string|RouteOptions|null $nameOrOpts = null)
+ * @psalm-type HandlerArray = array{0:string|object,1:string}
+ * @psalm-type RouteHandler = HandlerArray|string|callable
+ * @psalm-type RouteOptions = array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}
+ * @psalm-type GroupOptions = array{prefix?:mixed,domain?:mixed,middleware?:mixed,name?:mixed,as?:mixed}
+ * @method static RouteInterface delete(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface get(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface head(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface options(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface patch(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface post(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
+ * @method static RouteInterface put(string $path, array{0:string|object,1:string}|string|callable $handler, string|array{name?:mixed,as?:mixed,middleware?:mixed,aliases?:mixed,alias?:mixed,attributes?:mixed}|null $nameOrOpts = null)
  */
 final class Router
 {
@@ -108,6 +113,8 @@ final class Router
      * Bind URL generation services to the Route facade.
      *
      * @param Collection|array<string, array{0:string,1:?string}>|(Closure():(Collection|array<string, array{0:string,1:?string}>)) $routes
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function bindUrlServices(
         Collection|array|Closure $routes,
@@ -152,6 +159,9 @@ final class Router
      * @param list<mixed>|Closure $middleware Middleware list or closure
      * @param string|Closure|null $namePrefix Name prefix or closure
      * @param Closure|null $callback Callback used to declare nested routes
+     * @throws \RuntimeException
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function group(
         array|string|null $prefix = null,
@@ -170,6 +180,7 @@ final class Router
      * where process state persists across requests. Call this at the start of
      * a new request or during a worker reset to ensure no stale Registrar is
      * leaked between lifecycles.
+     * @throws \LogicException
      */
     public static function reset(): void
     {
@@ -179,6 +190,7 @@ final class Router
 
     /**
      * Reset URL generation services (useful for tests/workers).
+     * @throws \LogicException
      */
     public static function resetUrlServices(): void
     {
@@ -194,6 +206,7 @@ final class Router
      * @param string $prefix URL prefix for the resource (e.g. "/users")
      * @param string $controller Controller class name or callable representation
      * @param array<string,mixed> $opts Optional configuration forwarded to Registrar::resource
+     * @throws \RuntimeException
      */
     public static function resource(string $name, string $prefix, string $controller, array $opts = []): void
     {
@@ -218,6 +231,8 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function signedUrlFor(
         string $name,
@@ -242,6 +257,8 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function temporaryUrlFor(
         string $name,
@@ -268,6 +285,8 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function temporaryUrlUntil(
         string $name,
@@ -294,6 +313,8 @@ final class Router
      *
      * @param array<string,mixed> $params
      * @param array<string,mixed> $query
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     public static function urlFor(
         string $name,
@@ -339,6 +360,9 @@ final class Router
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     private static function assertRouteName(string $name): void
     {
         if ($name === '') {
@@ -346,6 +370,9 @@ final class Router
         }
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function assertUrlBound(): void
     {
         if (!UrlGeneratorRegistry::has()) {
@@ -365,28 +392,8 @@ final class Router
     }
 
     /**
-     * @param array<int,mixed>|string|callable $handler
-     * @return RouteHandler
-     */
-    private static function normalizeHandler(array|string|callable $handler): array|string|callable
-    {
-        if (is_array($handler)) {
-            if (
-                count($handler) !== 2
-                || (!is_string($handler[0]) && !is_object($handler[0]))
-                || !is_string($handler[1])
-            ) {
-                throw new \InvalidArgumentException('Array handler must be [class-or-object, method].');
-            }
-
-            return [$handler[0], $handler[1]];
-        }
-
-        return $handler;
-    }
-
-    /**
      * @return Collection|array<string, array{0:string,1:?string}>
+     * @throws \LogicException
      */
     private static function normalizeLazyRouteSource(mixed $routes): Collection|array
     {
@@ -455,35 +462,13 @@ final class Router
         return $value instanceof \Stringable ? (string) $value : null;
     }
 
+    /**
+     * @throws \LogicException
+     */
     private static function requireRouteGenerator(): UrlGenerator
     {
         self::assertUrlBound();
 
         return UrlGeneratorRegistry::get();
-    }
-
-    /**
-     * @param RouteHandler $handler
-     * @param string|RouteOptions|null $nameOrOpts
-     */
-    private static function verb(
-        string $verb,
-        string $path,
-        array|string|callable $handler,
-        string|array|null $nameOrOpts = null,
-    ): RouteInterface {
-        $router = self::getInstance();
-        $normalized = self::normalizeHandler($handler);
-
-        return match ($verb) {
-            'delete' => $router->delete($path, $normalized, $nameOrOpts),
-            'get' => $router->get($path, $normalized, $nameOrOpts),
-            'head' => $router->head($path, $normalized, $nameOrOpts),
-            'options' => $router->options($path, $normalized, $nameOrOpts),
-            'patch' => $router->patch($path, $normalized, $nameOrOpts),
-            'post' => $router->post($path, $normalized, $nameOrOpts),
-            'put' => $router->put($path, $normalized, $nameOrOpts),
-            default => throw new RuntimeException("Unsupported HTTP verb '{$verb}' in Router facade."),
-        };
     }
 }

@@ -21,6 +21,15 @@ use Infocyph\Webrick\Constants\HttpMethodEnum;
  * @phpstan-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,id:int}
  * @phpstan-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
  * @phpstan-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
+ * @psalm-type PcreEntry array{id:int,params:list<string>}
+ * @psalm-type PcreStep array{type:'pcre',regex:string,routes:array<string,PcreEntry>}
+ * @psalm-type FastDispatchStep array{regex:string,routes:array<string,PcreEntry>}
+ * @psalm-type FastDispatch array{segment:int,groups:array<array-key,list<FastDispatchStep>>}
+ * @psalm-type AllowedLiteralEntry array{regex:string,methods:list<string>}
+ * @psalm-type AllowedBucket array{type:'single',regex:string,methods:list<string>}|array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>}|array{type:'fallback'}
+ * @psalm-type FallbackStep array{type:'fallback',segments:list<array<string,mixed>>,id:int}
+ * @psalm-type DynamicBucket array{steps:list<PcreStep|FallbackStep>,fast_dispatch?:FastDispatch}
+ * @psalm-type MatcherGroup array{routes:array<int,mixed>,static:array<string,array<string,int>>,static_allowed:array<string,list<string>>,dynamic:array<string,array<int,array<string,DynamicBucket>>>,dynamic_allowed:array<int,array<string,AllowedBucket>>}
  */
 final class CompiledMatcherDynamicEngine
 {
@@ -29,6 +38,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     public function collectAllowedGroup(
         array $group,
@@ -66,6 +76,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     public function collectAllowedGroups(
         array $groups,
@@ -84,6 +95,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param list<MatcherGroup> $groups
      * @return int|array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function matchGroups(array $groups, string $method, string $path, int $count, string $prefix): int|array|null
     {
@@ -100,6 +113,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param MatcherGroup $group
      * @return int|array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     public function matchRequested(array $group, string $method, string $path, int $count, string $prefix): int|array|null
     {
@@ -145,6 +160,7 @@ final class CompiledMatcherDynamicEngine
      * @param PcreEntry $entry
      * @param array<array-key,mixed> $matches
      * @return array{0:int,1:array<string,string>}
+     * @throws \UnexpectedValueException
      */
     private static function captureParams(array $entry, array $matches): array
     {
@@ -163,6 +179,8 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param list<FastDispatchStep> $steps
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private static function findFastDispatchSteps(array $steps, string $path): ?array
     {
@@ -179,11 +197,15 @@ final class CompiledMatcherDynamicEngine
     /**
      * @param PcreStep|FastDispatchStep $step
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private static function findPcreStep(array $step, string $path): ?array
     {
         $matches = [];
-        $status = preg_match($step['regex'], $path, $matches);
+        /** @var non-empty-string $regex */
+        $regex = $step['regex'];
+        $status = preg_match($regex, $path, $matches);
         if ($status === false) {
             throw new \RuntimeException('Compiled matcher PCRE failed during dispatch.');
         }
@@ -212,7 +234,7 @@ final class CompiledMatcherDynamicEngine
         }
 
         $regex = $spec['regex'] ?? null;
-        if (is_string($regex)) {
+        if (is_string($regex) && $regex !== '') {
             return preg_match($regex, $piece) === 1;
         }
 
@@ -269,6 +291,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     private function collectAllowedBucket(
         array $bucket,
@@ -281,6 +304,7 @@ final class CompiledMatcherDynamicEngine
             return true;
         }
         if ($bucket['type'] === 'single') {
+            /** @var array{type:'single',regex:non-empty-string,methods:list<string>} $bucket */
             $status = preg_match($bucket['regex'], $path);
             if ($status === false) {
                 throw new \RuntimeException('Compiled matcher single-terminal PCRE failed during dispatch.');
@@ -292,6 +316,7 @@ final class CompiledMatcherDynamicEngine
             return false;
         }
 
+        /** @var array{type:'literal',segment:int,groups:array<array-key,AllowedLiteralEntry>} $bucket */
         $segments ??= self::pathSegments($path);
         $this->collectLiteralAllowed($bucket, $path, $skip, $allowed, $segments);
 
@@ -326,6 +351,7 @@ final class CompiledMatcherDynamicEngine
      * @param array<string,true> $skip
      * @param array<string,bool> $allowed
      * @param list<string> $segments
+     * @throws \RuntimeException
      */
     private function collectLiteralAllowed(array $bucket, string $path, array $skip, array &$allowed, array &$segments): void
     {
@@ -338,7 +364,9 @@ final class CompiledMatcherDynamicEngine
             return;
         }
 
-        $status = preg_match($entry['regex'], $path);
+        /** @var non-empty-string $regex */
+        $regex = $entry['regex'];
+        $status = preg_match($regex, $path);
         if ($status === false) {
             throw new \RuntimeException('Compiled matcher allowed-method PCRE failed during dispatch.');
         }
@@ -351,6 +379,8 @@ final class CompiledMatcherDynamicEngine
      * @param DynamicBucket $bucket
      * @param list<string>|null $segments
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function findBucket(array $bucket, string $path, ?array &$segments): ?array
     {
@@ -363,8 +393,10 @@ final class CompiledMatcherDynamicEngine
 
         foreach ($bucket['steps'] as $step) {
             if ($step['type'] === 'pcre') {
+                /** @var PcreStep $step */
                 $hit = self::findPcreStep($step, $path);
             } else {
+                /** @var FallbackStep $step */
                 $segments ??= self::pathSegments($path);
                 $hit = $this->findFallbackStep($step, $segments);
             }
@@ -408,6 +440,8 @@ final class CompiledMatcherDynamicEngine
      * @param MatcherGroup $group
      * @param list<string>|null $segments
      * @return array{0:int,1:array<string,string>}|null
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
      */
     private function findMethod(
         array $group,

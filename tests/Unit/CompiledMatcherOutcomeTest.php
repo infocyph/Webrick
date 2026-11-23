@@ -24,7 +24,7 @@ it('returns only the compiled route index for parameter-free hits', function (Cl
         '/health',
         static fn(): Response => Response::plaintext('ok'),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -37,7 +37,7 @@ it('returns route index and dynamic params without materializing the route', fun
         '/users/{id}',
         static fn(string $id): Response => Response::plaintext($id),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -51,7 +51,7 @@ it('uses the get route index for head fallback without allocating a success outc
         '/resource',
         static fn(): Response => Response::plaintext('ok'),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
@@ -64,14 +64,16 @@ it('keeps automatic options as an explicit control outcome', function (Closure $
         '/resource',
         static fn(): Response => Response::plaintext('ok'),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
     $outcome = $matcher->matchCompiled('OPTIONS', '*', '/resource');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Automatic OPTIONS must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::AUTO_OPTIONS)
         ->and($outcome->allowed)->toContain('GET', 'HEAD');
 })->with('compiled outcome matchers');
 
@@ -81,14 +83,16 @@ it('keeps method misses as explicit control outcomes', function (Closure $factor
         '/resource',
         static fn(): Response => Response::plaintext('ok'),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
     $outcome = $matcher->matchCompiled('POST', '*', '/resource');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED);
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Method miss must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::METHOD_NOT_ALLOWED);
 })->with('compiled outcome matchers');
 
 it('keeps not found as an explicit control outcome', function (Closure $factory): void {
@@ -97,12 +101,14 @@ it('keeps not found as an explicit control outcome', function (Closure $factory)
         '/resource',
         static fn(): Response => Response::plaintext('ok'),
     ));
-    $matcher = $factory();
+    $matcher = makeTestMatcher($factory);
     $matcher->add($route);
     $matcher->finalize();
 
     $outcome = $matcher->matchCompiled('GET', '*', '/missing');
 
-    expect($outcome)->toBeInstanceOf(MatchOutcome::class)
-        ->and($outcome->type)->toBe(MatchOutcomeType::NOT_FOUND);
+    if (!$outcome instanceof MatchOutcome) {
+        throw new UnexpectedValueException('Missing route must return a control outcome.');
+    }
+    expect($outcome->type)->toBe(MatchOutcomeType::NOT_FOUND);
 })->with('compiled outcome matchers');

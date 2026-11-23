@@ -18,6 +18,9 @@ final class DefaultEmitter extends BaseEmitter
 
     public const string FINISH_NONE = 'none';
 
+    /**
+     * @throws \InvalidArgumentException
+     */
     public function __construct(
         private readonly string $finishMode = self::FINISH_NONE,
         private readonly bool $chunked = false,
@@ -32,6 +35,10 @@ final class DefaultEmitter extends BaseEmitter
         }
     }
 
+    /**
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     */
     #[\Override]
     public function emit(Response $response, ?Request $request = null): void
     {

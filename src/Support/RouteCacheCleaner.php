@@ -7,6 +7,9 @@ namespace Infocyph\Webrick\Support;
 /** Filesystem operations for route-cache cleanup, isolated from build orchestration. */
 final class RouteCacheCleaner
 {
+    /**
+     * @throws \RuntimeException
+     */
     public static function canonicalSafeDirectory(string $dir): string
     {
         $dir = trim($dir);
@@ -40,6 +43,9 @@ final class RouteCacheCleaner
         return $canonical;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function clearDirectoryPreservingGitignore(string $dir): bool
     {
         $dir = self::canonicalSafeDirectory($dir);
@@ -65,6 +71,9 @@ final class RouteCacheCleaner
         return $ok && $removed;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function removeDirectory(string $path): bool
     {
         if (is_link($path)) {
@@ -80,6 +89,9 @@ final class RouteCacheCleaner
         return true;
     }
 
+    /**
+     * @throws \RuntimeException
+     */
     public static function removeFile(string $file): bool
     {
         if (!is_file($file) && !is_link($file)) {
@@ -96,7 +108,10 @@ final class RouteCacheCleaner
         return true;
     }
 
-    /** @return array{bool,bool} */
+    /**
+     * @return array{bool,bool}
+     * @throws \RuntimeException
+     */
     private static function clearEntry(\SplFileInfo $path, string $root): array
     {
         $pathname = $path->getPathname();

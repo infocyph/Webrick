@@ -38,6 +38,9 @@ final class TraceContext
         return new RequestContext($request, $otelAvailable);
     }
 
+    /**
+     * @throws \LogicException
+     */
     public static function require(Request $request): RequestContext
     {
         $context = self::fromRequest($request);
