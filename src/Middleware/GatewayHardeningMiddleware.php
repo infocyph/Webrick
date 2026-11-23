@@ -182,7 +182,6 @@ final readonly class GatewayHardeningMiddleware
         ]);
     }
 
-
     /** @param list<IpCidr> $networks */
     private function cidrHit(?string $ip, array $networks): bool
     {

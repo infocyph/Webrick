@@ -879,3 +879,8 @@ The preceding [Security & Standards #45103097420](https://github.com/infocyph/We
 ### W02.1 PHPForge formatting correction — 2026-11-23
 
 At [Security & Standards #45103942392](https://github.com/infocyph/Webrick/actions/runs/45103942392), PHP 8.4/8.5/8.6 **Psalm/PHPStan analysis passed** and strict Sphinx/no-dev checks passed; remaining Pest/PHPForge quality jobs reported `class_attributes_separation` in the new gateway method group. This correction removes the extra separator before the class-closing brace, without modifying any runtime expression, policy, constructor signature or benchmark. **W02/W02.1 not closed until QA green at this corrected SHA.**
+
+
+### W02.1 confirmed remaining Pint separator — 2026-11-23
+
+The follow-up [Security & Standards #45104256431](https://github.com/infocyph/Webrick/actions/runs/45104256431) retained one `class_attributes_separation` style error, even though strict Sphinx passed. Direct source-line inspection identified the **two blank lines** between `attachNetworkAttributes()` and `cidrHit()` as the remaining violation, rather than the class-closing brace. Normalize to exactly one separator. No additional security logic or benchmark policy changes. W02/W02.1 remain pending green QA at this corrected SHA.
