@@ -220,11 +220,11 @@ jobs:
           ref: ${{ github.sha }}
           path: candidate
 
-      - name: Check out release baseline or identical-source A/A control
+      - name: Check out immutable 6.0.4 baseline or identical-source A/A control
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: ${{ inputs.aa_control && github.sha || 'main' }}
+          ref: ${{ inputs.aa_control && github.sha || '6.0.4' }}
           path: baseline
 
       - name: Pin prepared baseline revision
@@ -305,7 +305,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: ${{ inputs.aa_control && github.sha || 'main' }}
+          ref: ${{ inputs.aa_control && github.sha || '6.0.4' }}
           path: baseline
           fetch-depth: 0
 

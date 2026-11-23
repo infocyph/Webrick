@@ -44,3 +44,27 @@ if CERT_AA_CONTROL=1 load_select_admission_modes "$scratch/baseline" "$scratch/c
     echo 'Accepted mismatched A/A source revisions.' >&2; exit 1
 fi
 echo 'A/A control identity and fail-closed contract verified.'
+
+# Keep optional source-identical diagnostic A/A separate from feature PR
+# release certification. Release A/B must compare against a fixed tag.
+workflow_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../workflows" && pwd)"
+release="$workflow_root/release-acceptance.yml"
+runtime="$workflow_root/runtime-release-certification.yml"
+aa="$workflow_root/http-aa-control.yml"
+if grep -Fq 'aa_control: true' "$release" || grep -Fq 'needs: measurement-calibration' "$release"; then
+    echo 'A/A calibration must not gate PR release A/B certification.' >&2
+    exit 1
+fi
+grep -Fq 'aa_control: false' "$release"
+grep -Fq 'uses: ./.github/workflows/runtime-release-certification.yml' "$release"
+grep -Fq 'aa_control: true' "$aa"
+grep -Eq '^[[:space:]]+workflow_dispatch:' "$aa"
+if grep -Eq '^[[:space:]]+push:|^[[:space:]]+pull_request:' "$aa"; then
+    echo 'Diagnostic source-identical A/A must remain manual-only.' >&2
+    exit 1
+fi
+if [[ "$(grep -Fc "ref: \${{ inputs.aa_control && github.sha || '6.0.4' }}" "$runtime")" -ne 2 ]]; then
+    echo 'Both A/B baseline checkouts must pin the immutable 6.0.4 tag.' >&2
+    exit 1
+fi
+echo 'PR release compares 6.0.4 vs candidate; A/A is manual and non-blocking.'

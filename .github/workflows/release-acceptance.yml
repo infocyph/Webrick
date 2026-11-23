@@ -1,11 +1,10 @@
 name: Webrick 6.1 — Full Runtime Release Acceptance
 
-# CI-only acceptance trigger. Use code-relevant feature branch pushes once,
-# not both push and pull_request, which previously duplicated hour-long
-# certifications for the same PR SHA. The PR's normal QA remains separate.
-# The release gate uses the exact branch SHA for its 6.0.4 -> 6.1 comparison.
-# The separate HTTP A/A Measurement Control workflow runs independently:
-# its artifacts must not collide with this release run.
+# Compare the exact candidate SHA against the immutable 6.0.4 release tag.
+# Keep expensive release certification independent from ordinary PR QA.
+# A/A calibrates a measurement environment, not a pull request; its separate
+# manually triggered workflow is .github/workflows/http-aa-control.yml.
+# Do not block the actual A/B comparison on source-identical A/A variability.
 on:
   push:
     branches:
@@ -24,16 +23,8 @@ permissions:
   contents: read
 
 jobs:
-  measurement-calibration:
-    name: Exact-SHA source-identical measurement calibration
-    uses: ./.github/workflows/runtime-release-certification.yml
-    with:
-      aa_control: true
-      benchmark_cpu_isolation: true
-
   full-release:
-    name: Full runtime release and performance certification
-    needs: measurement-calibration
+    name: Webrick 6.0.4 vs candidate runtime and release certification
     uses: ./.github/workflows/runtime-release-certification.yml
     with:
       aa_control: false
