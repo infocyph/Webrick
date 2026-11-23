@@ -31,18 +31,22 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
                 $routes->get('/bare', static fn(Request $request): Response => Response::plaintext(
                     $request->getAttribute('cors_policy') === null
                         && $request->getAttribute('produces') === null ? 'bare' : 'unexpected-policy',
+                    200,
                 ));
                 $routes->get('/cors', static fn(Request $request): Response => Response::plaintext(
                     $request->getAttribute('cors_policy') instanceof Cors
                         && $request->getAttribute('produces') === null ? 'cors' : 'missing-cors',
+                    200,
                 ), ['attributes' => ['cors' => $cors]]);
                 $routes->get('/produces', static fn(Request $request): Response => Response::plaintext(
                     $request->getAttribute('produces') instanceof Produces
                         && $request->getAttribute('cors_policy') === null ? 'produces' : 'missing-produces',
+                    200,
                 ), ['attributes' => ['produces' => $produces]]);
                 $routes->get('/both', static fn(Request $request): Response => Response::plaintext(
                     $request->getAttribute('cors_policy') instanceof Cors
                         && $request->getAttribute('produces') instanceof Produces ? 'both' : 'missing-both',
+                    200,
                 ), ['attributes' => ['cors' => $cors, 'produces' => $produces]]);
             },
             environment: 'production',
@@ -77,7 +81,8 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
                 Request::fake(uri: '/' . $name),
                 [],
             );
-            expect((string) $response->getBody())->toBe($name);
+            expect($response->getStatusCode())->toBe(200)
+                ->and((string) $response->getBody())->toBe($name);
             expect($pipelines->getValue($dispatcher))->toBe([]);
             expect($decoded->getValue($artifact))->toHaveCount(
                 match ($name) {
@@ -106,6 +111,7 @@ test('compiled route middleware still creates one reusable pipeline without reta
             register: static function (Registrar $routes): void {
                 $routes->get('/secured', static fn(Request $request): Response => Response::plaintext(
                     (string) $request->getAttribute('nonce', ''),
+                    200,
                 ), [
                     'middleware' => [static function (Request $request, Closure $next): Response {
                         $response = $next($request);
@@ -138,7 +144,8 @@ test('compiled route middleware still creates one reusable pipeline without reta
                 Request::fake(uri: '/secured')->withAttribute('nonce', $nonce),
                 [],
             );
-            expect((string) $response->getBody())->toBe($nonce)
+            expect($response->getStatusCode())->toBe(200)
+                ->and((string) $response->getBody())->toBe($nonce)
                 ->and($response->getHeaderLine('X-Pipeline-Nonce'))->toBe($nonce);
             expect($pipelines->getValue($dispatcher))->toHaveCount(1);
         }

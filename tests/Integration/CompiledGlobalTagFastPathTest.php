@@ -10,7 +10,6 @@ use Infocyph\Webrick\Router\Build\ReleaseCompiler;
 use Infocyph\Webrick\Router\Build\RouterArtifactLoader;
 use Infocyph\Webrick\Router\Definition\Registrar;
 use Infocyph\Webrick\Router\Kernel\CompiledRouterKernel;
-use Infocyph\Webrick\Router\Kernel\ErrorHandler;
 use Infocyph\Webrick\Router\Matching\FusedMatcher;
 use Infocyph\Webrick\Router\Runtime\RoutingInput;
 use Infocyph\Webrick\Runtime\Http\RuntimeCapabilities;
@@ -43,7 +42,7 @@ final class CompiledGlobalTagFastPathTest extends TestCase
             new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $routes): void {
-                    $routes->get('/direct', static fn(): Response => Response::plaintext('direct'));
+                    $routes->get('/direct', static fn(): Response => Response::plaintext('direct', 200));
                 },
                 environment: 'production',
                 configFingerprint: 'empty-tags',
@@ -74,7 +73,9 @@ final class CompiledGlobalTagFastPathTest extends TestCase
                 },
                 new RuntimeCapabilities('test'),
             );
-            expect((string) $kernel->handleRuntime($context)->getBody())->toBe('direct')
+            $response = $kernel->handleRuntime($context);
+            expect($response->getStatusCode())->toBe(200)
+                ->and((string) $response->getBody())->toBe('direct')
                 ->and($requestCreations)->toBe(0);
         } finally {
             cleanTestCache($directory);
@@ -97,7 +98,7 @@ final class CompiledGlobalTagFastPathTest extends TestCase
             new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $routes): void {
-                    $routes->get('/tag', static fn(Request $request): Response => Response::plaintext($request->getUri()->getPath()));
+                    $routes->get('/tag', static fn(Request $request): Response => Response::plaintext($request->getUri()->getPath(), 200));
                 },
                 environment: 'production',
                 configFingerprint: 'scoped-tags',
@@ -136,7 +137,8 @@ final class CompiledGlobalTagFastPathTest extends TestCase
             );
             foreach (['one', 'two'] as $id) {
                 $response = $kernel->handle(Request::fake(uri: '/tag')->withAttribute('id', $id));
-                expect((string) $response->getBody())->toBe('pre[post[/tag]]')
+                expect($response->getStatusCode())->toBe(200)
+                    ->and((string) $response->getBody())->toBe('pre[post[/tag]]')
                     ->and($response->getHeaderLine('X-Tagged-pre'))->toBe('/tag')
                     ->and($response->getHeaderLine('X-Tagged-post'))->toBe('/tag');
             }
@@ -160,7 +162,7 @@ final class CompiledGlobalTagFastPathTest extends TestCase
             new ReleaseCompiler()->compile(
                 builder: $builder,
                 register: static function (Registrar $routes): void {
-                    $routes->get('/explicit', static fn(): Response => Response::plaintext('terminal'));
+                    $routes->get('/explicit', static fn(): Response => Response::plaintext('terminal', 200));
                 },
                 environment: 'production',
                 configFingerprint: 'explicit-global',
@@ -198,11 +200,10 @@ final class CompiledGlobalTagFastPathTest extends TestCase
                 releaseManifestPath: $directory . '/release.json',
                 environment: 'production',
                 configFingerprint: 'explicit-global',
-                errorHandler: new ErrorHandler(logger: new NullLogger(), debug: true),
             );
             $response = $kernel->handle(Request::fake(uri: '/explicit'));
-            self::assertSame(200, $response->getStatusCode(), (string) $response->getBody());
             expect($response->getStatusCode())->toBe(200)
+                ->and((string) $response->getBody())->toBe('terminal')
                 ->and($response->getHeaderLine('X-Explicit-Pre'))->toBe('yes')
                 ->and($response->getHeaderLine('X-Explicit-Post'))->toBe('yes');
         } finally {
