@@ -68,7 +68,7 @@ test('compiled dispatcher hydrates route policy metadata only for routes that de
         $decoded = new ReflectionProperty($artifact, 'decodedRoutes');
         $pipelines = new ReflectionProperty($dispatcher, 'pipelines');
 
-        foreach (['bare', 'bare', 'cors', 'produces', 'both'] as $offset => $name) {
+        foreach (['bare', 'bare', 'cors', 'produces', 'both'] as $name) {
             $index = match ($name) {
                 'bare' => 0,
                 'cors' => 1,
@@ -109,17 +109,20 @@ test('compiled route middleware still creates one reusable pipeline without reta
         $builder = ContainerBuilder::create('webrick.pipeline.' . bin2hex(random_bytes(4)));
         $built = new RouteCompiler()->compile(
             register: static function (Registrar $routes): void {
-                $routes->get('/secured', static fn(Request $request): Response => Response::plaintext(
-                    (string) $request->getAttribute('nonce', ''),
-                    200,
-                ), [
+                $routes->get('/secured', static function (Request $request): Response {
+                    $nonce = $request->getAttribute('nonce', '');
+
+                    return Response::plaintext(is_string($nonce) ? $nonce : '', 200);
+                }, [
                     'middleware' => [static function (Request $request, Closure $next): Response {
                         $response = $next($request);
                         if (!$response instanceof Response) {
                             throw new UnexpectedValueException('Pipeline must return Response.');
                         }
 
-                        return $response->withHeader('X-Pipeline-Nonce', (string) $request->getAttribute('nonce', ''));
+                        $nonce = $request->getAttribute('nonce', '');
+
+                        return $response->withHeader('X-Pipeline-Nonce', is_string($nonce) ? $nonce : '');
                     }],
                 ]);
             },
