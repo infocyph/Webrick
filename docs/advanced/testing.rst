@@ -42,9 +42,10 @@ native types only in an explicitly breaking release.
 Runtime release certification
 -----------------------------
 
-For the Webrick 6.1 ``feature/risk-admission`` development branch,
-the full load/soak workflow is deliberately deferred until final readiness:
-intermediate commits run Security & Standards, Sphinx and functional checks.
+For Webrick 6.1, normal PR QA runs Security & Standards, Sphinx and
+functional integration. Code-relevant feature-branch pushes run the
+independent 6.0.4-to-candidate A/B acceptance workflow; source-identical
+A/A measurement diagnostics remain separately manual.
 The PHPForge benchmark matrix is also deferred on intermediate pull requests
 without disabling PHPForge's QA, PHPStan, Psalm, taint analysis, security, or
 package checks. On the final candidate SHA, manually invoke
@@ -58,15 +59,17 @@ After all non-performance work passes at the final SHA, invoke
 performance aggregation and protocol/soak job to pass. Do not treat
 the deferral as a waived release gate or lower the budgets.
 
-The existing ``.github/certification/load-benchmark.sh`` harness measures ten
-ordinary workloads and six protected workloads: deterministic admission, Redis
+The ``.github/certification/load-benchmark.sh`` harness measures nine
+unprotected routing workloads, one optional admission workload and six
+contention/worker-stress workloads: deterministic admission, Redis
 counters, atomic clearance consumption, valid and invalid bcrypt-cost-10 logins,
 and bounded synthetic provider latency. Baseline uses ordinary host middleware;
 candidate uses ``RiskAdmissionMiddleware`` with the same host policy and account
 lookup. Wrong-password responses are measured separately from successful logins.
 Persistent Runwire workers reuse an immutable middleware binding per protected
 workload. PHP-FPM constructs the binding within each request's PHP lifecycle.
-Both runtimes evaluate each request afresh.
+Both runtimes evaluate each request afresh. Risk middleware is registered
+only on synthetic protected routes; ordinary routes do not call the evaluator.
 
 Supply an isolated, unauthenticated loopback Redis service through
 ``IC_REDIS_HOST=127.0.0.1`` and ``IC_REDIS_PORT``. The hosted jobs provision their
@@ -77,11 +80,16 @@ Its routes and forced decisions are certification tools, excluded from
 the distributed package. Its seeded clearance and delayed provider are workload
 fixtures, not production issuance or live CAPTCHA verification.
 
-The gate runs three warmed trials at concurrency 1, 5, 20 and 50, with
-384 required rows and 64 comparisons per runtime mode. Samples normally run for
-10 seconds. Runwire tests of bcrypt at concurrency 20 and 50 use at least
-30 seconds to collect more completed requests for the p99 comparison. Budgets remain
-2% successful-throughput regression, 15% p99 regression and 32 MiB RSS growth.
+The default hosted gate runs four crossed, warmed trials at concurrency 1, 5,
+20 and 50, with 512 required rows and 64 comparisons per runtime mode.
+Samples normally run for 10 seconds. Runwire tests of bcrypt at concurrency 20 and 50 use at least
+30 seconds to collect more completed requests for the p99 comparison. The
+nine ordinary routes retain hard budgets of 2% successful-throughput regression,
+15% p99 regression and 32 MiB RSS growth. Opt-in admission and contention
+stress report relative comparisons diagnostically, but retain strict response,
+transport, worker integrity, the same RSS limit and per-trial absolute p99
+safety ceilings (1,600 ms for cheap admission/other stress; 8,000 ms for
+bcrypt/provider simulation).
 The SAPI lane sends HTTP through Nginx to a two-worker PHP-FPM pool with OPcache.
 The Runwire lane uses its optional native HTTP worker. Each concurrency has its
 own runner and Redis fixture, and each workload is measured as an adjacent
@@ -94,8 +102,9 @@ configuration in the current-run artifact. Each load shard restores and verifies
 that runtime, including reruns; the installer's moving minor-version selection
 cannot change only one shard's PHP patch. Mixed patch-version evidence remains
 a hard failure.
-The unchanged full-matrix analyzer rejects missing or duplicate rows and enforces
-every budget. This preserves the 64 minutes of total load per mode while reducing
+The full-matrix analyzer rejects missing or duplicate rows and enforces
+the default-route performance budgets plus independent protected-route
+correctness, memory and safety limits. This preserves the 64 minutes of total load per mode while reducing
 the load critical path to 16 minutes plus setup. The separate 30-minute soak runs
 in parallel and remains the floor for complete certification; runner queues and
 setup add elapsed time.
@@ -127,8 +136,9 @@ checking their queues within the ordinary two-second control deadline. Runwire's
 queue gauge is sampled after request completion; idle time alone does not refresh
 it. All settling observations and lifecycle events are retained on failure too.
 
-The performance reference is trusted ``main`` plus the reviewed cancellation-only
-backport in ``baseline-cancellation.diff``. The old adapter lets asynchronous
+The performance reference is immutable Webrick ``6.0.4`` (the PR base source
+SHA ``981d095``), with the reviewed cancellation-only backport in
+``baseline-cancellation.diff``. The old adapter lets asynchronous
 transport cancellation escape and kills workers; it cannot provide a valid
 performance control. ``prepare-baseline.sh`` verifies pinned source and patch
 hashes, rejects unrelated tracked edits and unknown source, and preserves Git

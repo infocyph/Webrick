@@ -26,6 +26,9 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
         matcher: FusedMatcher::make(),
         register: static function (Registrar $routes) use ($middleware, &$protectedCalls): void {
             $routes->get('/health', static fn(): Response => Response::plaintext('ok', 200));
+            for ($index = 0; $index < 24; ++$index) {
+                $routes->get('/ordinary/' . $index, static fn(): Response => Response::plaintext('ordinary', 200));
+            }
             $routes->get(
                 '/protected',
                 static function () use (&$protectedCalls): Response {
@@ -42,6 +45,12 @@ test('registrar risk middleware only evaluates selected routes and suppresses HE
     );
 
     $health = $kernel->handle(mockRequest('GET', '/health'));
+    for ($index = 0; $index < 24; ++$index) {
+        $ordinary = $kernel->handle(mockRequest('GET', '/ordinary/' . $index));
+        expect($ordinary->getStatusCode())->toBe(200);
+    }
+    expect($evaluations)->toBe(0);
+
     $rejection = $kernel->handle(mockRequest('GET', '/protected'));
     $head = $kernel->handle(mockRequest('HEAD', '/protected'));
 

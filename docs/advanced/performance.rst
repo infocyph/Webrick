@@ -388,42 +388,46 @@ Publishing Benchmark Results
 Publish fixed numbers only with the Webrick commit, PHP build, OPcache/JIT settings, CPU, RAM, operating system, web server, worker configuration, concurrency, route set, matcher, middleware stack, command, duration, warm/cold state, failures and p50/p95/p99 latency. Compare median sustained successful RPM across repeated production-equivalent runs.
 
 
-HTTP certification: core execution versus contention stress
+HTTP certification: default routes, optional admission, and stress
 -------------------------------------------------------------------
 
-The release HTTP matrix retains all 16 workloads across SAPI and Runwire
-at concurrency 1, 5, 20 and 50. It reports raw throughput, p99,
-resident memory and the paired-trial diagnostic for every case.
-Identical relative limits are not meaningful for all workloads.
+The release HTTP matrix retains all 16 workloads across SAPI and Runwire at
+concurrency 1, 5, 20 and 50. It preserves every raw sample, valid-response
+check, p99, throughput, memory delta and paired-trial diagnostic.
 
-**Webrick core performance** includes static, dynamic, json, stream,
-upload, not_found, method_not_allowed, file, range and risk_allow.
-The last case measures the optional lightweight risk-admission middleware,
-without Redis or bcrypt. Every core comparison retains the strict
-2% throughput, 15% p99 and 32 MiB RSS regression budgets.
+**Default routing (nine workloads)** consists of static, dynamic, json,
+stream, upload, not_found, method_not_allowed, file and range. None has
+risk admission registered on that route. These are the framework-wide
+6.0.4-to-6.1 A/B regressions and retain strict 2% successful-throughput,
+15% p99 and 32 MiB RSS budgets. Merely having an independent protected
+route registered must never invoke a risk evaluator for ordinary traffic.
 
-**Contention/worker stress** includes slow, risk_counter, risk_clearance,
-risk_login, risk_login_invalid and risk_provider_slow. These simulate
-delays, Redis access or bcrypt and cannot attribute a latency delta to
-Webrick's router. The provider case is a local 5 ms sleep, Redis and
-bcrypt, **not** a live CAPTCHA provider benchmark. Every stress trial
-still needs complete valid HTTP responses, correct status, zero transport
-failures/timeouts, zero rejected requests, drained queue telemetry and
-healthy worker lifecycle. The 32 MiB RSS growth limit still applies.
-Each baseline and candidate stress trial has a hard absolute p99 ceiling
-of 8,000 ms for bcrypt/provider work or 1,600 ms for other synthetic
-contention. These are 80% of the existing 10-second and 2-second wrk
-client timeouts; they are fixture safety ceilings, **not production SLAs**.
+**Opt-in admission (one workload)** is risk_allow. Its middleware is attached
+only to a synthetic protected route and deliberately has a cheap allow
+decision, without Redis or bcrypt. The 6.0.4 reference uses the same host
+evaluator through native middleware; 6.1 uses RiskAdmissionMiddleware.
+Relative throughput/p99 deltas measure optional integration overhead
+and are visible in the report, **not** a regression of default routing.
+Correct responses, lifecycle, memory and the 1,600 ms synthetic safety
+ceiling remain hard gates. This ceiling is not a production login SLA.
 
-For stress, relative throughput/p99 deltas remain reported as diagnostics
-but no longer gate Webrick core engine performance. Bimodal worker
-scheduling can produce a large median-p99 ratio with identical code
-and almost identical throughput.
+**Contention/worker stress (six workloads)** consists of slow,
+risk_counter, risk_clearance, risk_login, risk_login_invalid and
+risk_provider_slow. These exercise delays, Redis and bcrypt rather than
+isolated router overhead. The provider case uses a local 5 ms sleep,
+Redis and bcrypt; it is not a live CAPTCHA provider benchmark.
+Both baseline and candidate must return complete valid responses,
+correct status, zero transport errors/timeouts, zero rejected requests,
+drained request/queue telemetry and healthy worker lifecycle.
+The 32 MiB RSS limit still applies. Every synthetic stress trial has a
+hard absolute p99 ceiling of 8,000 ms for bcrypt/provider work or
+1,600 ms for the other stress workloads (80% of their existing client
+timeouts). These are fixture safety bounds, not production SLAs.
+Relative throughput and p99 changes remain fully reported as diagnostics.
 
-The workflow explicitly marks comparison_kind as aa or ab. A/A compares
-separate checkouts of the same exact source SHA and admission
-implementation. Its core-budget deviations are failures of measurement
-repeatability, not source regressions. A/B is the actual release-baseline
-versus candidate comparison. All 16 cases retain every raw sample and
-all correctness, worker-safety and memory requirements before a release
-can be certified.
+The three lanes express different contracts; they do not skip any
+workload or grant risk admission access to ordinary routes. A/A compares
+source-identical checkouts to diagnose measurement repeatability. A/B
+compares the pinned 6.0.4 baseline with the release candidate. Both
+retain completeness, security and operational checks, while only the
+default-routing lane determines framework-wide speed regression.

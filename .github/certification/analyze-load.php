@@ -205,11 +205,16 @@ function load_scenario(string $workload, int $concurrency): string
 }
 
 /**
- * Only lightweight Webrick request routing/admission is a core engine benchmark.
- * Synthetic Redis contention, password hashing, and deliberate sleeps are stress.
+ * Default routes alone define the framework's release-performance contract.
+ * Explicitly protected routes measure optional admission or host-owned stress,
+ * never the cost of serving ordinary application routes.
  */
 function acceptance_lane(string $workload): string
 {
+    if ($workload === 'risk_allow') {
+        return 'opt_in_admission';
+    }
+
     return in_array($workload, [
         'slow', 'risk_counter', 'risk_clearance',
         'risk_login', 'risk_login_invalid', 'risk_provider_slow',
@@ -220,7 +225,7 @@ function acceptance_lane(string $workload): string
  * Per-trial stress safety limits: 80% of the existing client timeouts
  * (10 s for bcrypt/provider; 2 s for other stress). Not router regressions.
  */
-function stress_p99_ceiling_ms(string $workload): float
+function protected_p99_ceiling_ms(string $workload): float
 {
     return in_array($workload, ['risk_login', 'risk_login_invalid', 'risk_provider_slow'], true)
         ? 8_000.0
@@ -517,12 +522,12 @@ foreach ($aggregates as $mode => $workloads) {
                     );
                 }
             } else {
-                $ceiling = stress_p99_ceiling_ms($workload);
+                $ceiling = protected_p99_ceiling_ms($workload);
                 foreach (['baseline' => $baseline, 'candidate' => $candidate] as $role => $arm) {
                     foreach ($arm['samples'] as $sample) {
                         if ($sample['p99_ms'] > $ceiling) {
                             $errors[] = sprintf(
-                                '%s/%s/c%d: %s trial %d p99 %.2f ms exceeds stress ceiling %.2f ms.',
+                                '%s/%s/c%d: %s trial %d p99 %.2f ms exceeds safety ceiling %.2f ms.',
                                 $mode, $workload, $concurrency, $role,
                                 $sample['trial'], $sample['p99_ms'], $ceiling,
                             );
@@ -561,7 +566,9 @@ foreach ($aggregates as $mode => $workloads) {
                 'scenario' => load_scenario($workload, (int) $concurrency),
                 'acceptance_lane' => $lane,
                 'stress_p99_ceiling_ms' => $lane === 'contention_stress'
-                    ? stress_p99_ceiling_ms($workload) : null,
+                    ? protected_p99_ceiling_ms($workload) : null,
+                'safety_p99_ceiling_ms' => $lane !== 'webrick_core'
+                    ? protected_p99_ceiling_ms($workload) : null,
                 'paired_throughput_ci95_diagnostic' => $pairedThroughput,
                 'paired_p99_ci95_diagnostic' => $pairedP99,
                 'baseline_rpm' => $baseline['median_rpm'],
@@ -583,7 +590,7 @@ foreach ($aggregates as $mode => $workloads) {
 $report = [
     'profile' => $profile,
     'comparison_kind' => $comparisonKind,
-    'measurement_model' => 'webrick-core-vs-contention-stress-v1',
+    'measurement_model' => 'default-routing-opt-in-admission-stress-v2',
     'trials' => $trials,
     'expected_rows' => count($expected),
     'observed_rows' => count($seen),
@@ -592,6 +599,7 @@ $report = [
         'p99_regression_percent' => $p99Budget,
         'memory_regression_mb' => $memoryBudgetMb,
         'stress_p99_max_ms' => ['password_or_provider' => 8_000, 'other_stress' => 1_600],
+        'opt_in_admission_p99_max_ms' => 1_600,
     ],
     'comparisons' => $comparisons,
     'errors' => array_values(array_unique($errors)),
@@ -602,18 +610,18 @@ file_put_contents(
 );
 
 $markdown = [
-    '# Webrick HTTP certification — core performance and contention stress',
+    '# Webrick HTTP certification — default routing, optional admission, and contention stress',
     '',
     $comparisonKind === 'aa'
         ? 'Identical-source A/A: core deviations measure repeatability, never code regression.'
         : 'A/B: core deviations compare release baseline and candidate.',
     '',
     sprintf(
-        'Webrick core: throughput regression ≤ %.2f%%, p99 regression ≤ %.2f%%. All lanes: RSS growth ≤ %.2f MiB.',
+        'Default routes (risk admission disabled): throughput regression ≤ %.2f%%, p99 regression ≤ %.2f%%. All lanes: RSS growth ≤ %.2f MiB.',
         $throughputBudget, $p99Budget, $memoryBudgetMb,
     ),
-    'Contention stress: complete validated responses, zero transport errors, drained queues, zero rejected requests, and per-trial p99 ≤ 8000 ms (hash/provider) or ≤ 1600 ms (other stress).',
-    'All relative stress throughput/p99 comparisons remain diagnostic, not Webrick core regression gates.',
+    'Opt-in admission and contention stress: complete validated responses, zero transport errors, drained queues, zero rejected requests, and per-trial p99 ≤ 8000 ms (hash/provider) or ≤ 1600 ms (other protected/stress workloads).',
+    'Relative opt-in admission and contention-stress throughput/p99 comparisons are diagnostic, not default-routing regression gates.',
     '',
     '| Lane | Mode | Workload | C | Baseline RPM | Candidate RPM | Δ throughput | Baseline p99 ms | Candidate p99 ms | Δ p99 | RSS Δ MiB | Candidate RPS CV |',
     '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
@@ -635,7 +643,7 @@ foreach ($comparisons as $row) {
         $row['candidate_rps_cv_percent'],
     );
 }
-// Keep all raw relative deviations, including non-gating stress deviations.
+// Keep all raw relative deviations, including non-gating protected-route overhead.
 $regressions = array_filter($comparisons, static fn(array $row): bool =>
     $row['throughput_regression_percent'] > $throughputBudget
     || $row['p99_regression_percent'] > $p99Budget
@@ -645,7 +653,7 @@ if ($regressions !== []) {
     $markdown[] = '';
     $markdown[] = '## Trial-level performance diagnostics';
     $markdown[] = '';
-    $markdown[] = 'Relative-threshold deviations are shown. Stress ratios are diagnostic only; absolute stress ceilings and correctness checks are hard gates. Trials are paired by number; isolated differences do not establish a code-level cause.';
+    $markdown[] = 'Relative-threshold deviations are shown. Optional admission and stress ratios are diagnostic; absolute safety ceilings and correctness checks are hard gates. Trials are paired by number; isolated differences do not establish a code-level cause.';
     $markdown[] = '';
     $markdown[] = '| Mode | Workload | C | Trial | Baseline RPS | Candidate RPS | Baseline p99 ms | Candidate p99 ms |';
     $markdown[] = '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |';
