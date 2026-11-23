@@ -98,6 +98,37 @@ final readonly class ReleaseCompiler
         }
 
         $builder->validate(strict: true);
+        // The finalized InterMix graph is the authority for compiled tag presence.
+        // Resolve no services: request-scoped middleware must stay request-scoped.
+        $activeTags = [];
+        foreach ($builder->definitionGraph()->definitionMeta() as $meta) {
+            foreach ($meta['tags'] as $tag) {
+                $activeTags[$tag] = true;
+            }
+        }
+        $preTags = array_values(array_filter(
+            $routerBuild->preGlobalTags,
+            static fn(string $tag): bool => isset($activeTags[$tag]),
+        ));
+        $postTags = array_values(array_filter(
+            $routerBuild->postGlobalTags,
+            static fn(string $tag): bool => isset($activeTags[$tag]),
+        ));
+        if ($preTags !== $routerBuild->preGlobalTags || $postTags !== $routerBuild->postGlobalTags) {
+            $routerBuild = new RouterBuildResult(
+                routes: $routerBuild->routes,
+                plans: $routerBuild->plans,
+                aliases: $routerBuild->aliases,
+                preGlobal: $routerBuild->preGlobal,
+                postGlobal: $routerBuild->postGlobal,
+                preGlobalTags: $preTags,
+                postGlobalTags: $postTags,
+                hasDomainRoutes: $routerBuild->hasDomainRoutes,
+                environment: $routerBuild->environment,
+                configFingerprint: $routerBuild->configFingerprint,
+            );
+        }
+
         $intermix = $builder->compile($intermixPath);
         $webrick = $this->routerArtifacts->compile($routerBuild, $routerPath);
 
