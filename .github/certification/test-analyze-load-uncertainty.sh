@@ -183,7 +183,8 @@ foreach ($report['comparisons'] as $row) {
     if ($row['workload'] === 'risk_provider_slow' && $row['concurrency'] === 50) {
         if ($row['acceptance_lane'] !== 'contention_stress'
             || $row['p99_regression_percent'] <= 15.0
-            || $row['stress_p99_ceiling_ms'] !== 8000.0) {
+            || !is_numeric($row['stress_p99_ceiling_ms'])
+            || (float) $row['stress_p99_ceiling_ms'] !== 8000.0) {
             throw new RuntimeException('Raw stress tail comparison is missing or misclassified.');
         }
         $seen['stress'] = true;
