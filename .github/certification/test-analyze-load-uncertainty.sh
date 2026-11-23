@@ -252,7 +252,7 @@ foreach ($report['comparisons'] as $row) {
     if ($row['workload'] === 'risk_allow' && $row['concurrency'] === 5) {
         $found = $row['acceptance_lane'] === 'opt_in_admission'
             && $row['p99_regression_percent'] > 15.0
-            && $row['safety_p99_ceiling_ms'] === 1600.0;
+            && (float) $row['safety_p99_ceiling_ms'] === 1600.0;
     }
 }
 if (!$found) {
