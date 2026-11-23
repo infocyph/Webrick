@@ -9,10 +9,10 @@ and full runtime performance certification passes at the final source SHA.
 Supported installation and dependencies
 ---------------------------------------
 
-Webrick 6.1 targets PHP 8.4 and 8.5. The required runtime packages include
-InterMix 11.2.1 or later within its 11.x constraint and PSR Cache/Log. Optional
-integrations remain opt-in: CacheLayer 4.0.2+, Pathwise 4.2.1+ and Runwire
-3.0.1+ are not required for an ordinary SAPI deployment.
+Webrick 6.1 targets PHP 8.4 and 8.5. CI also tests PHP 8.6. The required runtime
+packages include InterMix 11.2.1 or later within its 11.x constraint and PSR
+Cache/Log. CacheLayer 4.0.2+, Pathwise 4.2.1+ and Runwire 3.1+ remain optional
+for ordinary SAPI deployments.
 
 Test the application without development dependencies and with its configured
 middleware, plugins, route attributes, named arguments and compiled container.
@@ -105,15 +105,14 @@ Rolling deployment and rollback
    manifest and verified source SHA-256 identities.
 2. Run PHPForge, PHPStan, Psalm, unit/integration tests, security checks, Sphinx,
    no-development-dependency consumer tests and direct runtime protocol tests.
-3. Complete final performance certification on the exact candidate SHA. On
-   ``feature/risk-admission``, this is invoked deliberately with the existing
-   ``Runtime Release Certification`` ``workflow_dispatch``, rather than
-   automatically on every intermediate code push. The 2% RPM, 15% p99 and
-   32-MiB RSS budgets, complete response validation and 30-minute soak
-   remain mandatory. Run the full PHPForge benchmark matrix at the same final
-   source SHA through the manually dispatched ``Security & Standards``
-   workflow; intermediate pull requests still require all its non-performance
-   quality and security checks.
+3. Complete final performance certification on the exact candidate SHA.
+   ``Webrick 6.1 — Full Runtime Release Acceptance`` runs on changes to source,
+   tests and certification inputs on ``feature/risk-admission``. It can also
+   be dispatched manually. The nine ordinary routes retain the 2% RPM and
+   15% p99 limits. All workloads retain response and lifecycle validation,
+   applicable latency ceilings and the 32-MiB RSS budget. Live protocol checks
+   and the 30-minute soak remain required. ``Security & Standards`` runs the
+   full PHPForge benchmark matrix on PRs from ``feature/risk-admission``.
 4. Drain current PHP-FPM or Runwire workers, switch the active application
    symlink/route to the prebuilt release, restart workers as appropriate for
    OPcache settings and verify health, metrics and transport behavior.
