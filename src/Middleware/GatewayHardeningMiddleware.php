@@ -183,75 +183,6 @@ final readonly class GatewayHardeningMiddleware
     }
 
 
-    /**
-     * Only an explicitly configured, CIDR-trusted edge can attest a fingerprint.
-     * A missing header is not a failed JA4 classification.
-     *
-     * @throws \Infocyph\Webrick\Exceptions\HttpException
-     */
-    private function trustedJa4(Request $request): ?string
-    {
-        $value = $this->trustedRiskHeader($request, $this->trustedJa4Header);
-        if ($value === null) {
-            return null;
-        }
-        if (strlen($value) > 128 || preg_match('/^[a-z0-9_]{15,128}$/D', $value) !== 1) {
-            throw HttpException::badRequest('Malformed verified JA4 signal.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @throws \Infocyph\Webrick\Exceptions\HttpException
-     */
-    private function trustedAsn(Request $request): ?int
-    {
-        $value = $this->trustedRiskHeader($request, $this->trustedAsnHeader);
-        if ($value === null) {
-            return null;
-        }
-        if (preg_match('/^(?:AS)?([1-9][0-9]{0,9})$/D', $value, $matches) !== 1
-            || (int) $matches[1] > 4_294_967_295
-        ) {
-            throw HttpException::badRequest('Malformed verified ASN signal.');
-        }
-
-        return (int) $matches[1];
-    }
-
-    /**
-     * Explicitly reject ambiguous/multiple values from a trusted hop.
-     * The edge must overwrite client-supplied headers, never append to them.
-     *
-     * @throws \Infocyph\Webrick\Exceptions\HttpException
-     */
-    private function trustedRiskHeader(Request $request, ?string $name): ?string
-    {
-        if ($name === null) {
-            return null;
-        }
-
-        $values = $request->getHeader($name);
-        if ($values === []) {
-            return null;
-        }
-
-        if (count($values) !== 1) {
-            throw HttpException::badRequest('Ambiguous verified risk signal.');
-        }
-
-        $value = $values[0];
-        if ($value === '') {
-            return null;
-        }
-        if (strlen($value) > 128 || str_contains($value, ',') || trim($value) !== $value) {
-            throw HttpException::badRequest('Malformed verified risk signal.');
-        }
-
-        return $value;
-    }
-
     /** @param list<IpCidr> $networks */
     private function cidrHit(?string $ip, array $networks): bool
     {
@@ -451,4 +382,77 @@ final readonly class GatewayHardeningMiddleware
 
         return $response;
     }
+
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedAsn(Request $request): ?int
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedAsnHeader);
+        if ($value === null) {
+            return null;
+        }
+        if (preg_match('/^(?:AS)?([1-9][0-9]{0,9})$/D', $value, $matches) !== 1
+            || (int) $matches[1] > 4_294_967_295
+        ) {
+            throw HttpException::badRequest('Malformed verified ASN signal.');
+        }
+
+        return (int) $matches[1];
+    }
+
+    /**
+     * Only an explicitly configured, CIDR-trusted edge can attest a fingerprint.
+     * A missing header is not a failed JA4 classification.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedJa4(Request $request): ?string
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedJa4Header);
+        if ($value === null) {
+            return null;
+        }
+        if (strlen($value) > 128 || preg_match('/^[a-z0-9_]{15,128}$/D', $value) !== 1) {
+            throw HttpException::badRequest('Malformed verified JA4 signal.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Explicitly reject ambiguous/multiple values from a trusted hop.
+     * The edge must overwrite client-supplied headers, never append to them.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     * @throws \InvalidArgumentException
+     */
+    private function trustedRiskHeader(Request $request, ?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        $values = $request->getHeader($name);
+        if ($values === []) {
+            return null;
+        }
+
+        if (count($values) !== 1) {
+            throw HttpException::badRequest('Ambiguous verified risk signal.');
+        }
+
+        $value = $values[0];
+        if ($value === '') {
+            return null;
+        }
+        if (strlen($value) > 128 || str_contains($value, ',') || trim($value) !== $value) {
+            throw HttpException::badRequest('Malformed verified risk signal.');
+        }
+
+        return $value;
+    }
+
 }

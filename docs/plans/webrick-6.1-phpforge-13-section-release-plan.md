@@ -869,3 +869,8 @@ After the preceding ledger snapshot, [Security & Standards #45044622112](https:/
 ### W02.1 correction and strict-doc reference feedback — 2026-11-23
 
 The preceding [Security & Standards #45103097420](https://github.com/infocyph/Webrick/actions/runs/45103097420) failed **only strict Sphinx**: the new edge guide used an unresolved `:class:` role for a Webrick PHP type that has no corresponding documented object inventory. This correction uses RST code literals instead. The first risk-signal test version used non-existent `Request::withHeaders()`; construct the existing `Request` with explicit header fields instead. These are **fixture/documentation correctness fixes**, not production performance changes. Re-run normal PHPForge and strict Sphinx QA before closing W02/W02.1; no performance acceptance claim from automatic runtime workflow.
+
+
+### W02.1 security QA feedback correction — 2026-11-23
+
+[Security & Standards #45103578521](https://github.com/infocyph/Webrick/actions/runs/45103578521), code SHA `d6b8b875`, passed **strict Sphinx/source-free consumer** and **clean install**, with remaining analysis/quality reds in the optional JA4/ASN gateway extension: Psalm reports `MissingThrowsDocblock` for the native `getHeader()` path, and PHPForge Pint reports `ordered_class_elements` / `class_attributes_separation`. This follow-up moves the new private methods into existing alphabetical class order, normalizes method spacing and explicitly documents the native `InvalidArgumentException` propagation. No authorization/fail-closed logic, public signature, benchmark contract, or Foundation dependency changes; W02/W02.1 remain pending complete green QA.
