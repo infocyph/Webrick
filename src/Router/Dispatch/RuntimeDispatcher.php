@@ -9,6 +9,7 @@ use Infocyph\Webrick\Response\Response;
 use Infocyph\Webrick\Router\Build\CompiledRouterArtifact;
 use Infocyph\Webrick\Router\Build\ExecutionKind;
 use Infocyph\Webrick\Router\Build\ExecutionPlan;
+use Infocyph\Webrick\Router\Build\RouteCapability;
 use Infocyph\Webrick\Runtime\InterMixRuntime;
 use JsonSerializable;
 use UnexpectedValueException;
@@ -40,7 +41,11 @@ final class RuntimeDispatcher
      */
     public function dispatch(int $routeIndex, ExecutionPlan $plan, Request $request, array $vars): Response
     {
-        $attributes = $this->artifact->routeAttributesForIndex($routeIndex);
+        // CORS/Produces presence is immutable build-time route metadata.
+        // Avoid hydrating matcher-only CompiledRoute objects for ordinary routes.
+        $attributes = ($plan->capabilities & (RouteCapability::CORS | RouteCapability::PRODUCES)) !== 0
+            ? $this->artifact->routeAttributesForIndex($routeIndex)
+            : [];
         if ($vars !== []) {
             $attributes['route_params'] = $vars;
         }
