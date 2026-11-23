@@ -389,7 +389,7 @@ Publish fixed numbers only with the Webrick commit, PHP build, OPcache/JIT setti
 
 
 HTTP certification: core execution versus contention stress
-----------------------------------------------------------
+-------------------------------------------------------------------
 
 The release HTTP matrix retains all 16 workloads across SAPI and Runwire
 at concurrency 1, 5, 20 and 50. It reports raw throughput, p99,
