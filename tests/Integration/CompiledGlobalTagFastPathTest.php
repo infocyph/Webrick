@@ -36,8 +36,6 @@ final class CompiledGlobalTagFastPathTest extends TestCase
         $builder = ContainerBuilder::create('webrick.empty.tags.' . bin2hex(random_bytes(4)));
         $manifestPath = $directory . '/release.json';
         $routerPath = $directory . '/router.php';
-        $fingerprint = 'explicit-global';
-        $fingerprint = 'scoped-tags';
         $fingerprint = 'empty-tags';
 
         try {
@@ -92,6 +90,7 @@ final class CompiledGlobalTagFastPathTest extends TestCase
         $builder = ContainerBuilder::create('webrick.scoped.tags.' . bin2hex(random_bytes(4)));
         $manifestPath = $directory . '/release.json';
         $routerPath = $directory . '/router.php';
+        $fingerprint = 'scoped-tags';
 
         try {
             new ReleaseCompiler()->compile(
@@ -154,6 +153,7 @@ final class CompiledGlobalTagFastPathTest extends TestCase
         }
         $builder = ContainerBuilder::create('webrick.explicit.globals.' . bin2hex(random_bytes(4)));
         $routerPath = $directory . '/router.php';
+        $fingerprint = 'explicit-global';
 
         try {
             new ReleaseCompiler()->compile(
