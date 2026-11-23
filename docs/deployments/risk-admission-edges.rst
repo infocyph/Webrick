@@ -102,6 +102,62 @@ missing/invalid fingerprint as a documented *risk-data unavailable* case.
 A single JA4 is shared by many legitimate browsers and can be imitated.
 Never automatically treat it as a cryptographic device identifier.
 
+
+Native gateway-to-risk evaluator bridge
+---------------------------------------
+
+Webrick's existing `GatewayHardeningMiddleware` can expose a **normalized
+JA4 and ASN** to a host evaluator without making a new risk-scoring service
+or forcing a dependency on Foundation. This feature is **disabled by default**
+and only reads the configured headers when the socket peer matches the
+gateway's configured `trustedProxyCidrs`:
+
+.. code-block:: php
+
+   use Infocyph\Webrick\Middleware\GatewayHardeningMiddleware;
+   use Infocyph\Webrick\Middleware\RiskAdmissionMiddleware;
+   use Infocyph\Webrick\Middleware\RiskDecision;
+   use Infocyph\Webrick\Request\Request;
+
+   $edge = new GatewayHardeningMiddleware(
+       trustedProxyCidrs: ['127.0.0.1/32'],
+       trustedClientIpHeaders: ['X-Verified-Client-IP'],
+       trustedJa4Header: 'X-Verified-JA4',
+       trustedAsnHeader: 'X-Verified-ASN',
+       enforceHttps: false, // TLS terminates at the trusted local edge
+   );
+
+   $evaluator = static function (Request $request): RiskDecision {
+       $ja4 = $request->getAttribute('risk_verified_ja4'); // ?string
+       $asn = $request->getAttribute('risk_verified_asn'); // ?int
+       $clientIp = $request->getAttribute('client_ip'); // ?string
+
+       // Host-owned risk scoring remains independent of Webrick.
+       // Missing signals must not be confused with verified ones.
+       return RiskDecision::allow();
+   };
+
+   $risk = new RiskAdmissionMiddleware($evaluator);
+
+Place `$edge` in front of `$risk` on selected protected routes,
+or in the global pre-route pipeline. The IP configuration above is valid
+**only when your NGINX/Caddy HTTP gateway actually connects from loopback**;
+replace it with a narrowly scoped CIDR belonging to your own trusted edge
+for any other topology. The edge must overwrite the configured headers,
+including deleting the JA4/ASN headers when their provenance is unknown.
+Do not trust arbitrary `X-Forwarded-For` chains or a user's HTTP
+fingerprint claim.
+
+A valid, present `X-Verified-JA4` is exposed as
+`risk_verified_ja4`; a valid decimal or `AS`-prefixed 32-bit ASN
+is exposed as `risk_verified_asn`. Missing signals become `null`.
+Duplicate, comma-joined, malformed or oversized values sent **from the
+trusted hop** are rejected before the protected handler. Values from an
+untrusted socket peer are ignored. These attributes are scoped to the
+immutable request and never persisted in Webrick or interpreted as
+authentication credentials. Webrick does not decide browser consistency or
+trust levels; these belong to the host (later, opt-in Foundation).
+
 App-side admission and storage safety
 -------------------------------------
 

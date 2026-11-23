@@ -57,7 +57,14 @@ final readonly class GatewayHardeningMiddleware
         private bool $stripHopByHop = true,
         private array $redirectAllowedHosts = [],
         private array $trustedClientIpHeaders = [],
+        private ?string $trustedJa4Header = null,
+        private ?string $trustedAsnHeader = null,
     ) {
+        foreach ([$this->trustedJa4Header, $this->trustedAsnHeader] as $name) {
+            if ($name !== null && (strlen($name) > 64 || preg_match('/^[A-Za-z0-9-]+$/D', $name) !== 1)) {
+                throw new \InvalidArgumentException('Trusted risk header names must be valid HTTP field names.');
+            }
+        }
         if ($httpsPort < 1 || $httpsPort > 65535) {
             throw new \InvalidArgumentException('httpsPort must be between 1 and 65535.');
         }
@@ -160,14 +167,88 @@ final readonly class GatewayHardeningMiddleware
         $clientIp = $endUser->ip();
         $peerIp = $endUser->ipNoProxy();
 
+        $trusted = $this->cidrHit($peerIp, $this->trustedProxyNetworks);
+
         return $req->withAttributes([
             'client_ip' => $clientIp,
             'peer_ip' => $peerIp,
-            'is_trusted_proxy' => $this->cidrHit($peerIp, $this->trustedProxyNetworks),
+            'is_trusted_proxy' => $trusted,
+            'risk_verified_ja4' => $trusted ? $this->trustedJa4($req) : null,
+            'risk_verified_asn' => $trusted ? $this->trustedAsn($req) : null,
             'effective_scheme' => $req->getUri()->getScheme(),
             'effective_host' => $req->getUri()->getHost(),
             'effective_port' => $req->getUri()->getPort(),
         ]);
+    }
+
+
+    /**
+     * Only an explicitly configured, CIDR-trusted edge can attest a fingerprint.
+     * A missing header is not a failed JA4 classification.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
+    private function trustedJa4(Request $request): ?string
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedJa4Header);
+        if ($value === null) {
+            return null;
+        }
+        if (strlen($value) > 128 || preg_match('/^[a-z0-9_]{15,128}$/D', $value) !== 1) {
+            throw HttpException::badRequest('Malformed verified JA4 signal.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
+    private function trustedAsn(Request $request): ?int
+    {
+        $value = $this->trustedRiskHeader($request, $this->trustedAsnHeader);
+        if ($value === null) {
+            return null;
+        }
+        if (preg_match('/^(?:AS)?([1-9][0-9]{0,9})$/D', $value, $matches) !== 1
+            || (int) $matches[1] > 4_294_967_295
+        ) {
+            throw HttpException::badRequest('Malformed verified ASN signal.');
+        }
+
+        return (int) $matches[1];
+    }
+
+    /**
+     * Explicitly reject ambiguous/multiple values from a trusted hop.
+     * The edge must overwrite client-supplied headers, never append to them.
+     *
+     * @throws \Infocyph\Webrick\Exceptions\HttpException
+     */
+    private function trustedRiskHeader(Request $request, ?string $name): ?string
+    {
+        if ($name === null) {
+            return null;
+        }
+
+        $values = $request->getHeader($name);
+        if ($values === []) {
+            return null;
+        }
+
+        if (count($values) !== 1) {
+            throw HttpException::badRequest('Ambiguous verified risk signal.');
+        }
+
+        $value = $values[0];
+        if ($value === '') {
+            return null;
+        }
+        if (strlen($value) > 128 || str_contains($value, ',') || trim($value) !== $value) {
+            throw HttpException::badRequest('Malformed verified risk signal.');
+        }
+
+        return $value;
     }
 
     /** @param list<IpCidr> $networks */

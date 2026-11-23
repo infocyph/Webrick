@@ -122,6 +122,9 @@ For proxy-specific NGINX, Caddy and CDN setup, see
 risk-admission contract remains independent of the future Foundation
 risk-engine implementation.
 
+To opt in to trusted edge JA4/ASN extraction through the existing
+gateway, see :doc:`../deployments/risk-admission-edges`.
+
 The host owns InterMix request-scoped policy dependencies. Do not capture a
 Request, account, tenant, mutable identity or cancellation token in a
 worker-global callback. Ordinary SAPI requires no Runwire runtime; a host

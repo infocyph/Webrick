@@ -276,3 +276,101 @@ test('gateway preserves safe relative same-host and allowed redirect targets', f
     'same host absolute' => ['https://origin.example/path'],
     'same host network path' => ['//origin.example/path'],
 ]);
+
+test('gateway extracts opt-in JA4 and ASN only from a CIDR-trusted peer', function (): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedProxyCidrs: ['127.0.0.1/32'],
+        trustedClientIpHeaders: ['X-Verified-Client-IP'],
+        trustedJa4Header: 'X-Verified-JA4',
+        trustedAsnHeader: 'X-Verified-ASN',
+        enforceHttps: false,
+    );
+
+    $headers = [
+        'X-Verified-Client-IP' => '203.0.113.42',
+        'X-Verified-JA4' => 't13d1516h2_8daaf6152771_e5627efa2ab1',
+        'X-Verified-ASN' => 'AS13335',
+    ];
+
+    $gateway(
+        gatewayRequest(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'])
+            ->withHeaders($headers),
+        static function (Request $request): Response {
+            expect($request->getAttribute('client_ip'))->toBe('203.0.113.42')
+                ->and($request->getAttribute('is_trusted_proxy'))->toBeTrue()
+                ->and($request->getAttribute('risk_verified_ja4'))->toBe('t13d1516h2_8daaf6152771_e5627efa2ab1')
+                ->and($request->getAttribute('risk_verified_asn'))->toBe(13335);
+
+            return Response::plaintext('ok');
+        },
+    );
+
+    $gateway(
+        gatewayRequest(['REMOTE_ADDR' => '203.0.113.9', 'HTTP_HOST' => 'origin.example'])
+            ->withHeaders($headers),
+        static function (Request $request): Response {
+            expect($request->getAttribute('client_ip'))->toBe('203.0.113.9')
+                ->and($request->getAttribute('is_trusted_proxy'))->toBeFalse()
+                ->and($request->getAttribute('risk_verified_ja4'))->toBeNull()
+                ->and($request->getAttribute('risk_verified_asn'))->toBeNull();
+
+            return Response::plaintext('ok');
+        },
+    );
+});
+
+test('gateway does not activate risk signal extraction without explicit opt in', function (): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedProxyCidrs: ['127.0.0.1/32'],
+        enforceHttps: false,
+    );
+    $gateway(
+        gatewayRequest(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'])
+            ->withHeader('X-Verified-JA4', 't13d1516h2_8daaf6152771_e5627efa2ab1'),
+        static function (Request $request): Response {
+            expect($request->getAttribute('risk_verified_ja4'))->toBeNull()
+                ->and($request->getAttribute('risk_verified_asn'))->toBeNull();
+
+            return Response::plaintext('ok');
+        },
+    );
+});
+
+test('gateway rejects malformed trusted risk signals before the handler', function (array $headers): void {
+    $gateway = new GatewayHardeningMiddleware(
+        trustedProxyCidrs: ['127.0.0.1/32'],
+        trustedJa4Header: 'X-Verified-JA4',
+        trustedAsnHeader: 'X-Verified-ASN',
+        enforceHttps: false,
+    );
+    $calls = 0;
+
+    expect(fn() => $gateway(
+        gatewayRequest(['REMOTE_ADDR' => '127.0.0.1', 'HTTP_HOST' => 'origin.example'])
+            ->withHeaders($headers),
+        static function () use (&$calls): Response {
+            ++$calls;
+
+            return Response::plaintext('unreachable');
+        },
+    ))->toThrow(HttpException::class);
+    expect($calls)->toBe(0);
+})->with([
+    'duplicate fingerprint header' => [['X-Verified-JA4' => ['t13d1516h2_8daaf6152771_e5627efa2ab1', 't13d1516h2_8daaf6152771_e5627efa2ab1']]],
+    'comma injected fingerprint' => [['X-Verified-JA4' => 't13d1516h2_8daaf6152771_e5627efa2ab1,malicious']],
+    'invalid fingerprint' => [['X-Verified-JA4' => '<script>']],
+    'overlong fingerprint' => [['X-Verified-JA4' => str_repeat('a', 129)]],
+    'invalid ASN' => [['X-Verified-ASN' => 'AS-13335']],
+    'oversized ASN' => [['X-Verified-ASN' => '4294967296']],
+    'duplicate ASN' => [['X-Verified-ASN' => ['AS13335', 'AS13336']]],
+    'noncanonical ASN' => [['X-Verified-ASN' => '013335']],
+]);
+
+test('gateway rejects untrusted risk header configuration at startup', function (): void {
+    expect(fn(): GatewayHardeningMiddleware => new GatewayHardeningMiddleware(
+        trustedJa4Header: "X-JA4\r\nInjected: 1",
+    ))->toThrow(InvalidArgumentException::class);
+    expect(fn(): GatewayHardeningMiddleware => new GatewayHardeningMiddleware(
+        trustedAsnHeader: '',
+    ))->toThrow(InvalidArgumentException::class);
+});
