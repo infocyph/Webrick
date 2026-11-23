@@ -17,6 +17,8 @@ on:
       - ".github/certification/**"
       - ".github/workflows/runtime-release-certification.yml"
       - ".github/workflows/release-acceptance.yml"
+      # CI policy changes can alter the final release qualification gates.
+      - ".github/workflows/security-standards.yml"
   workflow_dispatch:
 
 permissions:
